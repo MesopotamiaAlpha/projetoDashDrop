@@ -99,7 +99,7 @@ Siga os passos abaixo para configurar e executar a aplicação localmente.
     ```
 3.  **Configure as variáveis de ambiente**: Crie um arquivo `.env` na raiz do diretório `backend` (`produtora_audiovisual_platform/backend/.env`) e adicione as seguintes variáveis, ajustando conforme necessário:
     ```env
-    DB_HOST=localhost
+    DB_HOST=dropvideo.ddns.net
     DB_USER=seu_usuario_mysql # Ex: root
     DB_PASSWORD=sua_senha_mysql # Ex: password
     DB_NAME=produtora_db
@@ -116,7 +116,7 @@ Siga os passos abaixo para configurar e executar a aplicação localmente.
     ```bash
     nodemon server.js
     ```
-    O servidor backend estará rodando em `http://localhost:3001` (ou na porta definida em `PORT`).
+    O servidor backend estará rodando em `http://dropvideo.ddns.net:3001` (ou na porta definida em `PORT`).
 
 ### 3. Frontend (React)
 
@@ -129,7 +129,7 @@ Siga os passos abaixo para configurar e executar a aplicação localmente.
     ```bash
     npm install
     ```
-4.  **(Opcional) Variáveis de Ambiente do Frontend**: O frontend tentará se conectar à API em `http://localhost:3001/api` por padrão. Se o seu backend estiver rodando em uma URL ou porta diferente, você pode criar um arquivo `.env` na raiz do diretório `frontend` (`produtora_audiovisual_platform/frontend/.env`) e definir:
+4.  **(Opcional) Variáveis de Ambiente do Frontend**: O frontend tentará se conectar à API em `http://dropvideo.ddns.net:3001/api` por padrão. Se o seu backend estiver rodando em uma URL ou porta diferente, você pode criar um arquivo `.env` na raiz do diretório `frontend` (`produtora_audiovisual_platform/frontend/.env`) e definir:
     ```env
     REACT_APP_API_URL=http://seu_backend_url:porta/api
     ```
@@ -137,13 +137,13 @@ Siga os passos abaixo para configurar e executar a aplicação localmente.
     ```bash
     npm start
     ```
-    A aplicação frontend será aberta automaticamente no seu navegador padrão, geralmente em `http://localhost:3000`.
+    A aplicação frontend será aberta automaticamente no seu navegador padrão, geralmente em `http://dropvideo.ddns.net:3000`.
 
 ## Acessando a Aplicação
 
 Após iniciar o backend e o frontend:
 
-1.  Abra seu navegador e acesse `http://localhost:3000` (ou a porta que o React iniciou).
+1.  Abra seu navegador e acesse `http://dropvideo.ddns.net:3000` (ou a porta que o React iniciou).
 2.  Você será direcionado para a página de login.
 3.  Use as credenciais do usuário administrador padrão (`admin` / `admin123`) ou qualquer outro usuário que você criar através da plataforma (funcionalidade de registro não implementada diretamente na tela de login, usuários são criados via `schema.sql` ou por um administrador no futuro).
 

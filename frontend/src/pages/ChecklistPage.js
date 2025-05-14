@@ -4,7 +4,7 @@ import axios from 'axios';
 import { useAuth } from '../contexts/AuthContext';
 import { jsPDF } from "jspdf";
 
-const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001/api';
+const API_URL = process.env.REACT_APP_API_URL || 'http://dropvideo.ddns.net:3001/api';
 
 const ChecklistPage = () => {
     const { currentUser } = useAuth();
