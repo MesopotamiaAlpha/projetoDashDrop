@@ -17,7 +17,7 @@ import { useAuth } from "../contexts/AuthContext";
 //   locales: { 'pt-BR': ptBR },
 // });
 
-const API_URL = process.env.REACT_APP_API_URL || "http://dropvideo.ddns.net:3001/api";
+const API_URL = process.env.REACT_APP_API_URL || "http://localhost:3001/api";
 
 const CalendarioPage = () => {
     const { currentUser } = useAuth();

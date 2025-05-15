@@ -4,7 +4,7 @@ import axios from 'axios';
 import { useAuth } from '../contexts/AuthContext';
 // import * as PIXI from 'pixi.js'; // Import PixiJS if animations are added here
 
-const API_URL = process.env.REACT_APP_API_URL || 'http://dropvideo.ddns.net:3001/api';
+const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001/api';
 
 const RoteiroEditPage = () => {
     const { id: roteiroId } = useParams(); // For editing existing roteiro
@@ -93,7 +93,7 @@ const RoteiroEditPage = () => {
                     // For now, we'll just set it and hope the browser can resolve it or it's a full URL.
                     // A better approach: store full URLs or have a dedicated endpoint.
                     // If the backend stores 'my_logo.png' and serves it from '/public/logos/my_logo.png'
-                    // then logoEmpresaUrl should be 'http://dropvideo.ddns.net:3001/public/logos/my_logo.png'
+                    // then logoEmpresaUrl should be 'http://localhost:3001/public/logos/my_logo.png'
                     // For now, let's assume `logo_empresa_path` is a full URL or a path that the API serves directly.
                     // If it's just a filename, this won't work without a static file server setup on the backend
                     // and the frontend knowing the base URL for those static files.

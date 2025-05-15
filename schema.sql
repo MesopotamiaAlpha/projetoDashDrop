@@ -1,5 +1,7 @@
 -- Scripts SQL para criação do banco de dados da Plataforma de Produtora Audiovisual
 
+create database produtora_db;
+use produtora_db;
 -- Tabela de Usuários
 CREATE TABLE Usuarios (
     id INT AUTO_INCREMENT PRIMARY KEY,
@@ -159,6 +161,9 @@ CREATE TABLE ChecklistItens (
 
 -- Adicionar usuário admin inicial (exemplo, a senha deve ser hash na aplicação)
 -- INSERT INTO Usuarios (nome_usuario, senha_hash, nome_completo, email, perfil_apresentador) VALUES ('admin', 'hash_da_senha_admin', 'Administrador do Sistema', 'admin@produtora.com', FALSE);
+
+--Adicionar o usuario admin para iniciar o banco, acima é um exemplo
+--INSERT INTO Usuarios (nome_usuario, senha_hash, nome_completo, email, perfil_apresentador) VALUES ('admin', '$2b$10$KuOhTWlold.orby5eGP6ieR0vxmyzYiQtlosTqlfX88sAdls3SFfW', 'Administrador do Sistema', 'admin@produtora.com', FALSE);
 
 -- Adicionar campos de auditoria às tabelas que ainda não os possuem de forma explícita para criado_por/atualizado_por
 -- (Já incluído na maioria das tabelas acima)
