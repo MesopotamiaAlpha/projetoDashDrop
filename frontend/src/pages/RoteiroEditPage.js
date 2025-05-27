@@ -1,52 +1,173 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import axios from 'axios';
+import Select from 'react-select'; // Import react-select
+import CreatableSelect from 'react-select/creatable'; // Import CreatableSelect for adding new tags
 import { useAuth } from '../contexts/AuthContext';
-// import * as PIXI from 'pixi.js'; // Import PixiJS if animations are added here
+import { v4 as uuidv4 } from 'uuid'; 
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001/api';
 
+// Helper to get contrasting text color (simple version)
+const getContrastYIQ = (hexcolor) => {
+    if (!hexcolor) return '#000000'; // Default to black if no color
+    hexcolor = hexcolor.replace("#", "");
+    const r = parseInt(hexcolor.substr(0, 2), 16);
+    const g = parseInt(hexcolor.substr(2, 2), 16);
+    const b = parseInt(hexcolor.substr(4, 2), 16);
+    const yiq = ((r * 299) + (g * 587) + (b * 114)) / 1000;
+    return (yiq >= 128) ? '#000000' : '#FFFFFF';
+};
+
+// Custom styles for react-select tags
+const tagSelectStyles = {
+    multiValue: (styles, { data }) => {
+        const color = data.color || '#cccccc'; // Use tag color or default
+        return {
+            ...styles,
+            backgroundColor: color,
+            color: getContrastYIQ(color),
+            borderRadius: '4px',
+            padding: '1px 3px',
+            display: 'flex',
+            alignItems: 'center',
+        };
+    },
+    multiValueLabel: (styles, { data }) => ({
+        ...styles,
+        color: getContrastYIQ(data.color || '#cccccc'),
+        fontSize: '0.8rem', 
+        paddingRight: '3px',
+    }),
+    multiValueRemove: (styles, { data }) => ({
+        ...styles,
+        color: getContrastYIQ(data.color || '#cccccc'),
+        ':hover': {
+            backgroundColor: data.color || '#cccccc',
+            color: 'white',
+            cursor: 'pointer',
+        },
+    }),
+    option: (styles, { data, isFocused, isSelected }) => {
+        const color = data.color || '#cccccc';
+        return {
+            ...styles,
+            backgroundColor: isSelected ? color : isFocused ? '#f0f0f0' : null,
+            color: isSelected ? getContrastYIQ(color) : '#333333',
+            ':before': { // Simple tag icon simulation
+                content: '"🏷️"', // Tag emoji
+                display: 'inline-block',
+                marginRight: '8px',
+            },
+        };
+    },
+    // Add other style customizations if needed (control, menu, etc.)
+};
+
 const RoteiroEditPage = () => {
-    const { id: roteiroId } = useParams(); // For editing existing roteiro
+    const { id: roteiroId } = useParams();
     const navigate = useNavigate();
     const { currentUser } = useAuth();
 
     const [nome, setNome] = useState('');
+    const [tipoRoteiro, setTipoRoteiro] = useState('');
     const [ano, setAno] = useState(new Date().getFullYear());
     const [mes, setMes] = useState(new Date().getMonth() + 1);
     const [dataCriacaoDocumento, setDataCriacaoDocumento] = useState(new Date().toISOString().split('T')[0]);
-    const [tags, setTags] = useState([]); // Array of selected tag IDs
-    const [allTags, setAllTags] = useState([]); // All available tags from API
-    const [cenas, setCenas] = useState([
-        // Default scene structure
-        { video: '', tec_transicao: '', audio: '', estilo_linha_json: {}, colunas_personalizadas_json: {} }
-    ]);
-    const [logoEmpresaUrl, setLogoEmpresaUrl] = useState(''); // From user settings or a default
+    // Roteiro-level tags (keep if needed, or remove if tags are only per-scene)
+    // const [tags, setTags] = useState([]); 
+    const [allTags, setAllTags] = useState([]); // All available tags for dropdowns
+    const [cenas, setCenas] = useState([]);
+    const [logoEmpresaUrl, setLogoEmpresaUrl] = useState('');
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
     const [successMessage, setSuccessMessage] = useState('');
+    const [eventos, setEventos] = useState([]);
+    const [eventoId, setEventoId] = useState('');
+    const [eventoNome, setEventoNome] = useState('');
+    const [loadingEventos, setLoadingEventos] = useState(false);
+    const [loadingTags, setLoadingTags] = useState(false);
 
     const isEditing = Boolean(roteiroId);
+
+    // Fetch all available tags for the dropdowns
+    const fetchAllTags = useCallback(async () => {
+        if (!currentUser) return;
+        setLoadingTags(true);
+        try {
+            const response = await axios.get(`${API_URL}/tags`, {
+                headers: { Authorization: `Bearer ${localStorage.getItem('authToken')}` }
+            });
+            // Format for react-select: { value: id, label: nome, color: cor }
+            const formattedTags = response.data.map(tag => ({
+                value: tag.id,
+                label: tag.nome,
+                color: tag.cor
+            }));
+            setAllTags(formattedTags);
+        } catch (err) {
+            console.error("Erro ao buscar todas as tags:", err);
+            setError('Falha ao carregar tags disponíveis.');
+        }
+        setLoadingTags(false);
+    }, [currentUser]);
 
     const fetchRoteiroData = useCallback(async () => {
         if (!isEditing || !currentUser) return;
         setLoading(true);
+        setError('');
         try {
+            // Fetch roteiro details (including roteiro-level tags if kept)
             const response = await axios.get(`${API_URL}/roteiros/${roteiroId}`, {
                 headers: { Authorization: `Bearer ${localStorage.getItem('authToken')}` }
             });
             const roteiro = response.data;
             setNome(roteiro.nome);
+            setTipoRoteiro(roteiro.tipo_roteiro || '');
             setAno(roteiro.ano);
             setMes(roteiro.mes);
-            setDataCriacaoDocumento(roteiro.dataCriacaoDocumento ? new Date(roteiro.dataCriacaoDocumento).toISOString().split('T')[0] : new Date().toISOString().split('T')[0]);
-            setTags(roteiro.tags ? roteiro.tags.map(t => t.id) : []);
+            setDataCriacaoDocumento(roteiro.data_criacao_documento ? new Date(roteiro.data_criacao_documento).toISOString().split('T')[0] : new Date().toISOString().split('T')[0]);
+            // setTags(roteiro.tags ? roteiro.tags.map(t => t.id) : []); // Roteiro-level tags
+            setEventoId(roteiro.evento_id || '');
             
-            // Fetch cenas for this roteiro
+            // Se tiver evento_id, buscar o nome do evento
+            if (roteiro.evento_id) {
+                try {
+                    const eventoResponse = await axios.get(`${API_URL}/calendario/eventos/${roteiro.evento_id}`, {
+                        headers: { Authorization: `Bearer ${localStorage.getItem('authToken')}` }
+                    });
+                    if (eventoResponse.data && eventoResponse.data.nome_gravacao) {
+                        setEventoNome(eventoResponse.data.nome_gravacao);
+                    }
+                } catch (eventoErr) {
+                    console.error("Erro ao buscar detalhes do evento:", eventoErr);
+                }
+            }
+
+            // Fetch cenas (backend now returns tags for each cena)
             const cenasResponse = await axios.get(`${API_URL}/roteiros/${roteiroId}/cenas`, {
                 headers: { Authorization: `Bearer ${localStorage.getItem('authToken')}` }
             });
-            setCenas(cenasResponse.data.length > 0 ? cenasResponse.data.map(c => ({...c, estilo_linha_json: c.estilo_linha_json || {}, colunas_personalizadas_json: c.colunas_personalizadas_json || {}})) : [{ video: '', tec_transicao: '', audio: '', estilo_linha_json: {}, colunas_personalizadas_json: {} }]);
+            
+            const fetchedCenas = cenasResponse.data.map(c => ({
+                ...c,
+                db_id: c.id, 
+                id: uuidv4(), // Frontend unique ID
+                type: c.tipo_linha || 'pauta',
+                nomeDivisao: c.nome_divisao || (c.tipo_linha === 'divisoria' ? 'NOVA CENA' : ''),
+                localizacao: c.localizacao || '',
+                // Map fetched tags to the format react-select expects
+                tags: c.tags ? c.tags.map(tag => ({ value: tag.id, label: tag.nome, color: tag.cor })) : [] 
+            }));
+
+            if (fetchedCenas.length === 0) {
+                 setCenas([
+                    { id: uuidv4(), type: 'divisoria', nomeDivisao: 'NOVA CENA', tags: [] },
+                    { id: uuidv4(), type: 'pauta', video: '', tec_transicao: '', audio: '', localizacao: '', tags: [] }
+                ]);
+            } else {
+                setCenas(fetchedCenas);
+            }
 
         } catch (err) {
             console.error("Erro ao buscar dados do roteiro:", err);
@@ -55,117 +176,139 @@ const RoteiroEditPage = () => {
         setLoading(false);
     }, [isEditing, roteiroId, currentUser]);
 
-    const fetchAllTags = useCallback(async () => {
-        if (!currentUser) return;
-        try {
-            const response = await axios.get(`${API_URL}/tags`, {
-                headers: { Authorization: `Bearer ${localStorage.getItem('authToken')}` }
-            });
-            setAllTags(response.data);
-        } catch (err) {
-            console.error("Erro ao buscar todas as tags:", err);
-        }
-    }, [currentUser]);
-    
+    // Fetch User Logo (unchanged)
     const fetchUserLogo = useCallback(async () => {
         if (!currentUser || !currentUser.id) return;
         try {
-            // Assuming the user's profile contains the logo path
-            // This might need adjustment based on how logo_empresa_path is stored and served
-            const userProfileResponse = await axios.get(`${API_URL}/users/me`, { // or /users/${currentUser.id}
+            const userProfileResponse = await axios.get(`${API_URL}/users/me`, { 
                  headers: { Authorization: `Bearer ${localStorage.getItem('authToken')}` }
             });
             if (userProfileResponse.data.logo_empresa_path) {
-                // If logo_empresa_path is a full URL, use it directly.
-                // If it's a relative path, prepend the API base URL or static server URL.
-                // For now, assuming it's a path that needs to be appended to API_URL if not absolute.
-                let logoPath = userProfileResponse.data.logo_empresa_path;
-                if (!logoPath.startsWith('http')) {
-                    // This is a placeholder. The actual URL construction depends on how files are served.
-                    // It might be `${API_URL}/uploads/${logoPath}` or similar.
-                    // For simplicity, if it's just a filename, we might not be able to display it directly without a proper static serving setup.
-                    // Let's assume for now it's a full URL or can be resolved by the browser if relative to the API.
-                    // If it's stored as a full URL in the DB, this is fine.
-                    // If it's a relative path like 'uploads/logo.png', and your API serves static files from '/uploads', then it would be `${API_URL}/${logoPath}`.
-                    // This needs to be configured correctly based on your backend file serving strategy.
-                    // For this example, let's assume it's a full URL or a path the backend can resolve if the frontend requests it via an image tag src.
-                    // A common pattern is to have a dedicated endpoint like /api/users/me/logo that returns the image file.
-                    // For now, we'll just set it and hope the browser can resolve it or it's a full URL.
-                    // A better approach: store full URLs or have a dedicated endpoint.
-                    // If the backend stores 'my_logo.png' and serves it from '/public/logos/my_logo.png'
-                    // then logoEmpresaUrl should be 'http://localhost:3001/public/logos/my_logo.png'
-                    // For now, let's assume `logo_empresa_path` is a full URL or a path that the API serves directly.
-                    // If it's just a filename, this won't work without a static file server setup on the backend
-                    // and the frontend knowing the base URL for those static files.
-                    // Let's assume it's a full URL for now for simplicity in this example.
-                    // If not, this part needs to be adapted to how logos are actually served.
-                }
                  setLogoEmpresaUrl(userProfileResponse.data.logo_empresa_path);
             }
         } catch (err) {
             console.error("Erro ao buscar logo da empresa:", err);
         }
     }, [currentUser]);
+    
+    // Fetch Eventos for Dropdown (unchanged)
+    const fetchEventos = useCallback(async () => {
+        if (!currentUser) return;
+        setLoadingEventos(true);
+        try {
+            const response = await axios.get(`${API_URL}/roteiros/eventos-dropdown`, {
+                headers: { Authorization: `Bearer ${localStorage.getItem('authToken')}` }
+            });
+            setEventos(response.data);
+        } catch (err) {
+            console.error("Erro ao buscar eventos do calendário:", err);
+        }
+        setLoadingEventos(false);
+    }, [currentUser]);
 
+    // Initial useEffect
     useEffect(() => {
-        fetchAllTags();
+        fetchAllTags(); // Fetch all tags on mount
         fetchUserLogo();
+        fetchEventos(); 
         if (isEditing) {
             fetchRoteiroData();
         } else {
-            // Set default date for new roteiro
+            // Start new roteiro with initial scene division and blank line
+            setCenas([
+                { id: uuidv4(), type: 'divisoria', nomeDivisao: 'NOVA CENA', tags: [] },
+                { id: uuidv4(), type: 'pauta', video: '', tec_transicao: '', audio: '', localizacao: '', tags: [] }
+            ]);
             setDataCriacaoDocumento(new Date().toISOString().split('T')[0]);
             setAno(new Date().getFullYear());
             setMes(new Date().getMonth() + 1);
         }
-    }, [isEditing, fetchRoteiroData, fetchAllTags, fetchUserLogo]);
+    }, [isEditing, fetchRoteiroData, fetchAllTags, fetchUserLogo, fetchEventos]); // Added fetchAllTags dependency
 
-    const handleCenaChange = (index, field, value) => {
-        const newCenas = [...cenas];
-        if (field === 'estilo_linha_json' || field === 'colunas_personalizadas_json') {
-            newCenas[index][field] = { ...newCenas[index][field], ...value };
+    // Handle changes in regular scene fields
+    const handleCenaChange = (id, field, value) => {
+        setCenas(prevCenas => prevCenas.map(cena => {
+            if (cena.id === id) {
+                return { ...cena, [field]: value }; 
+            }
+            return cena;
+        }));
+    };
+
+    // Handle changes in scene tags using react-select
+    const handleCenaTagsChange = (id, selectedOptions) => {
+        setCenas(prevCenas => prevCenas.map(cena => {
+            if (cena.id === id) {
+                return { ...cena, tags: selectedOptions || [] }; // Update tags array for the specific cena
+            }
+            return cena;
+        }));
+    };
+
+    // Handle creation of a new tag via CreatableSelect
+    const handleCreateTag = async (inputValue) => {
+        if (!inputValue || loadingTags) return;
+        setLoadingTags(true); // Indicate loading while creating tag
+        setError('');
+        try {
+            const response = await axios.post(`${API_URL}/tags`, 
+                { nome: inputValue }, // Backend will generate color if not provided
+                { headers: { Authorization: `Bearer ${localStorage.getItem('authToken')}` } }
+            );
+            const newTag = response.data.tag;
+            const newTagOption = { value: newTag.id, label: newTag.nome, color: newTag.cor };
+            
+            // Add the new tag to the list of all available tags
+            setAllTags(prevTags => [...prevTags, newTagOption]);
+            
+            // Optionally, immediately add the new tag to the current scene's tags
+            // Find which scene triggered the creation (might need context or pass cenaId)
+            // For simplicity, we just add it to the available options here.
+            // The user can then select it.
+            
+        } catch (err) {
+            console.error("Erro ao criar nova tag:", err);
+            setError(err.response?.data?.message || 'Falha ao criar nova tag.');
+        }
+        setLoadingTags(false);
+    };
+
+    // Add new blank line
+    const addLinha = () => {
+        setCenas([...cenas, { id: uuidv4(), type: 'pauta', video: '', tec_transicao: '', audio: '', localizacao: '', tags: [] }]);
+    };
+
+    // Add new scene division
+    const addDivisaoCena = () => {
+        setCenas([...cenas, { id: uuidv4(), type: 'divisoria', nomeDivisao: 'NOVA CENA', tags: [] }]);
+    };
+
+    // Remove line
+    const removeLinha = (idToRemove) => {
+        const pautaLines = cenas.filter(c => c.type === 'pauta');
+        if (pautaLines.length <= 1 && cenas.find(c => c.id === idToRemove)?.type === 'pauta') return;
+        setCenas(prevCenas => prevCenas.filter(cena => cena.id !== idToRemove));
+    };
+
+    // Handle evento selection change
+    const handleEventoChange = (e) => {
+        const selectedEventoId = e.target.value;
+        setEventoId(selectedEventoId);
+        
+        // Atualizar o nome do evento selecionado
+        if (selectedEventoId) {
+            const selectedEvento = eventos.find(evento => evento.id.toString() === selectedEventoId);
+            if (selectedEvento) {
+                setEventoNome(selectedEvento.nome);
+            } else {
+                setEventoNome('');
+            }
         } else {
-            // Convert all text to uppercase as per requirement
-            newCenas[index][field] = typeof value === 'string' ? value.toUpperCase() : value;
-        }
-        setCenas(newCenas);
-    };
-
-    const addCena = () => {
-        setCenas([...cenas, { video: '', tec_transicao: '', audio: '', estilo_linha_json: {}, colunas_personalizadas_json: {} }]);
-    };
-
-    const removeCena = (index) => {
-        if (cenas.length <= 1) return; // Keep at least one cena
-        const newCenas = cenas.filter((_, i) => i !== index);
-        setCenas(newCenas);
-    };
-    
-    const handleAddCustomColumn = (cenaIndex, columnName) => {
-        if (!columnName) return;
-        const newCenas = [...cenas];
-        const currentCustomCols = newCenas[cenaIndex].colunas_personalizadas_json || {};
-        if (!currentCustomCols[columnName.toUpperCase()]) { // Avoid duplicate column names (case insensitive for creation)
-            newCenas[cenaIndex].colunas_personalizadas_json = {
-                ...currentCustomCols,
-                [columnName.toUpperCase()]: '' // Initialize with empty value
-            };
-            setCenas(newCenas);
+            setEventoNome('');
         }
     };
 
-    const handleCustomColumnChange = (cenaIndex, columnName, value) => {
-        const newCenas = [...cenas];
-        newCenas[cenaIndex].colunas_personalizadas_json[columnName] = value.toUpperCase();
-        setCenas(newCenas);
-    };
-    
-    const handleRemoveCustomColumn = (cenaIndex, columnName) => {
-        const newCenas = [...cenas];
-        delete newCenas[cenaIndex].colunas_personalizadas_json[columnName];
-        setCenas(newCenas);
-    };
-
+    // Handle form submission
     const handleSubmit = async (e) => {
         e.preventDefault();
         setLoading(true);
@@ -174,258 +317,574 @@ const RoteiroEditPage = () => {
 
         const roteiroDataPayload = {
             nome,
+            tipo_roteiro: tipoRoteiro,
             ano: parseInt(ano),
             mes: parseInt(mes),
-            dataCriacaoDocumento,
-            tags, // Array of tag IDs
-            // conteudo_principal: "Optional field if you have it in your form"
+            data_criacao_documento: dataCriacaoDocumento,
+            // tags: tags, // Roteiro-level tags (if kept)
+            evento_id: eventoId || null
         };
 
         try {
-            let response;
+            let currentRoteiroId = roteiroId;
+            // Save or Update Roteiro details
             if (isEditing) {
-                response = await axios.put(`${API_URL}/roteiros/${roteiroId}`, roteiroDataPayload, {
+                await axios.put(`${API_URL}/roteiros/${roteiroId}`, roteiroDataPayload, {
                     headers: { Authorization: `Bearer ${localStorage.getItem('authToken')}` }
                 });
-                // Update cenas - this might need a batch update endpoint or individual updates
-                // For simplicity, let's assume cenas are updated separately or as part of the roteiro update if API supports it.
-                // The current backend controller for roteiro update does not handle cenas directly.
-                // Cenas need to be managed via /roteiros/:roteiroId/cenas endpoints.
-                // This means after updating the roteiro, we might need to update/create/delete cenas.
-                
-                // Simplified: delete all existing cenas and add new ones (not ideal for performance/IDs)
-                // A better approach: diff and update/create/delete selectively.
-                // For now, let's assume the user manages cenas and saves them. The save here is for the roteiro metadata.
-                // If the backend's PUT /roteiros/:id also handles cenas, this is simpler.
-                // Let's assume we need to manage cenas separately.
-                // 1. Update Roteiro Metadata
-                // 2. Manage Cenas (Create/Update/Delete)
-                // For this example, we'll focus on saving the roteiro metadata. Cena management would be more complex.
-                // Let's assume the backend handles cenas if they are part of the payload, or we make separate calls.
-                // The current backend `updateRoteiro` does not take cenas. Cenas are managed via their own endpoints.
-                // So, after saving the roteiro, we need to save the cenas.
-                // This part needs careful implementation based on API design.
-
-                // Let's try to update cenas one by one (or batch if API supports)
-                // This is a common pattern: first save/update the parent, then children.
-                for (let i = 0; i < cenas.length; i++) {
-                    const cena = cenas[i];
-                    const cenaPayload = {
-                        ...cena,
-                        ordem: i, // Ensure order is maintained
-                        estilo_linha_json: JSON.stringify(cena.estilo_linha_json || {}),
-                        colunas_personalizadas_json: JSON.stringify(cena.colunas_personalizadas_json || {})
-                    };
-                    if (cena.id) { // Existing cena, update it
-                        await axios.put(`${API_URL}/roteiros/${roteiroId}/cenas/${cena.id}`, cenaPayload, {
-                             headers: { Authorization: `Bearer ${localStorage.getItem('authToken')}` }
-                        });
-                    } else { // New cena, create it
-                        await axios.post(`${API_URL}/roteiros/${roteiroId}/cenas`, cenaPayload, {
-                             headers: { Authorization: `Bearer ${localStorage.getItem('authToken')}` }
-                        });
-                    }
-                }
-                // Handle deleted cenas if any (not implemented here for brevity, would require tracking original cenas)
-
             } else {
-                response = await axios.post(`${API_URL}/roteiros`, roteiroDataPayload, {
+                const response = await axios.post(`${API_URL}/roteiros`, roteiroDataPayload, {
                     headers: { Authorization: `Bearer ${localStorage.getItem('authToken')}` }
                 });
-                const newRoteiroId = response.data.roteiroId;
-                // Now save cenas for the new roteiro
-                for (let i = 0; i < cenas.length; i++) {
-                    const cena = cenas[i];
-                    const cenaPayload = {
-                        ...cena,
-                        ordem: i,
-                        estilo_linha_json: JSON.stringify(cena.estilo_linha_json || {}),
-                        colunas_personalizadas_json: JSON.stringify(cena.colunas_personalizadas_json || {})
-                    };
-                    await axios.post(`${API_URL}/roteiros/${newRoteiroId}/cenas`, cenaPayload, {
+                currentRoteiroId = response.data.roteiroId;
+            }
+
+            // --- Sync Cenas --- 
+            let existingCenaDbIds = [];
+            if(isEditing && currentRoteiroId) {
+                try {
+                    const cenasExistentesRes = await axios.get(`${API_URL}/roteiros/${currentRoteiroId}/cenas`, {
                         headers: { Authorization: `Bearer ${localStorage.getItem('authToken')}` }
                     });
-                }
-                if (!isEditing) {
-                    navigate(`/roteiros/editar/${newRoteiroId}`); // Navigate to edit mode after creation
+                    existingCenaDbIds = cenasExistentesRes.data.map(c => c.id);
+                } catch (fetchErr) {
+                    console.warn("Não foi possível buscar cenas existentes para diff", fetchErr);
                 }
             }
+
+            const frontendCenaDbIds = cenas.map(c => c.db_id).filter(id => id !== undefined);
+            const cenasToDelete = existingCenaDbIds.filter(dbId => !frontendCenaDbIds.includes(dbId));
+
+            // Delete scenes removed in frontend
+            for (const cenaIdToDelete of cenasToDelete) {
+                await axios.delete(`${API_URL}/roteiros/${currentRoteiroId}/cenas/${cenaIdToDelete}`, {
+                    headers: { Authorization: `Bearer ${localStorage.getItem('authToken')}` }
+                });
+            }
+
+            // Create or Update scenes from frontend
+            for (let i = 0; i < cenas.length; i++) {
+                const cena = cenas[i];
+                const cenaPayload = {
+                    ordem: i,
+                    tipo_linha: cena.type,
+                    video: cena.type === 'pauta' ? cena.video : null,
+                    tec_transicao: cena.type === 'pauta' ? cena.tec_transicao : null,
+                    audio: cena.type === 'pauta' ? cena.audio : null,
+                    localizacao: cena.type === 'pauta' ? cena.localizacao : null,
+                    nome_divisao: cena.type === 'divisoria' ? cena.nomeDivisao : null,
+                    // Send only the IDs of the selected tags for this scene
+                    tagIds: cena.tags ? cena.tags.map(tag => tag.value) : [] 
+                };
+
+                if (cena.db_id) { // Update existing scene
+                    await axios.put(`${API_URL}/roteiros/${currentRoteiroId}/cenas/${cena.db_id}`, cenaPayload, {
+                         headers: { Authorization: `Bearer ${localStorage.getItem('authToken')}` }
+                    });
+                } else { // Create new scene
+                    await axios.post(`${API_URL}/roteiros/${currentRoteiroId}/cenas`, cenaPayload, {
+                         headers: { Authorization: `Bearer ${localStorage.getItem('authToken')}` }
+                    });
+                }
+            }
+            // --- End Sync Cenas --- 
+            
             setSuccessMessage(`Roteiro ${isEditing ? 'atualizado' : 'criado'} com sucesso!`);
-            fetchRoteiroData(); // Refresh data
+            if (!isEditing && currentRoteiroId) {
+                navigate(`/roteiros/editar/${currentRoteiroId}`);
+            } else if (currentRoteiroId) {
+                // Re-fetch data after saving to get updated db_ids and tags
+                fetchRoteiroData(); 
+                fetchAllTags(); // Re-fetch tags in case new ones were created
+            }
+
         } catch (err) {
             console.error("Erro ao salvar roteiro:", err.response ? err.response.data : err);
             setError(err.response?.data?.message || `Falha ao salvar roteiro.`);
         }
         setLoading(false);
     };
+
+    // Generate PDF function
+    const handleGeneratePdf = async () => {
+        if (!roteiroId) {
+            setError("Salve o roteiro antes de gerar o PDF.");
+            return;
+        }
+        setLoading(true);
+        setError('');
+        try {
+            const response = await axios.get(`${API_URL}/roteiros/${roteiroId}/export-pdf`, {
+                headers: { Authorization: `Bearer ${localStorage.getItem('authToken')}` },
+                responseType: 'blob',
+            });
+            const blob = new Blob([response.data], { type: 'application/pdf' });
+            const link = document.createElement('a');
+            link.href = window.URL.createObjectURL(blob);
+            const safeNome = nome.replace(/[^a-zA-Z0-9]/g, '_') || 'roteiro';
+            link.download = `roteiro_${safeNome}.pdf`;
+            link.click();
+            window.URL.revokeObjectURL(link.href);
+        } catch (err) {
+            console.error("Erro ao gerar PDF:", err);
+            setError(err.response?.data?.message || 'Falha ao gerar PDF.');
+        }
+        setLoading(false);
+    };
     
-    const handleGeneratePdf = () => {
-        // PDF generation logic using jsPDF or WeasyPrint (via backend)
-        // This is a placeholder. Actual implementation will depend on the chosen library and complexity.
-        alert("Funcionalidade de Gerar PDF para este roteiro ainda não implementada.");
-        // Example with jsPDF (very basic):
-        // const doc = new jsPDF();
-        // doc.text(`Roteiro: ${nome}`, 10, 10);
-        // cenas.forEach((cena, index) => {
-        //     doc.text(`Cena ${index + 1}: ${cena.video} | ${cena.audio}`, 10, 20 + (index * 10));
-        // });
-        // doc.save(`${nome.replace(/\s+/g, '_')}_roteiro.pdf`);
+    const handlePrint = () => {
+        // Print area needs adjustment if tags shouldn't be printed
+        const printArea = document.getElementById('roteiro-print-area');
+        if (!printArea) return;
+        
+        // Clone the table to modify for printing
+        const tableClone = printArea.querySelector('table').cloneNode(true);
+        
+        // Remove tag elements from the clone
+        tableClone.querySelectorAll('.tag-selector-container').forEach(el => el.remove());
+        
+        // Remover a coluna de Ações completamente
+        const headerRow = tableClone.querySelector('thead tr');
+        if (headerRow && headerRow.lastElementChild) {
+            headerRow.removeChild(headerRow.lastElementChild); // Remove a última coluna (Ações)
+        }
+        
+        // Remover a coluna de Ações de cada linha
+        tableClone.querySelectorAll('tbody tr').forEach(row => {
+            if (row.lastElementChild && !row.hasAttribute('data-divisoria')) {
+                row.removeChild(row.lastElementChild); // Remove a última coluna (Ações)
+            }
+        });
+        
+        // Criar estilos CSS para impressão com as novas especificações
+        const printStyles = `
+            <style>
+                @media print {
+                    body { 
+                        font-family: Arial, sans-serif;
+                        margin: 0;
+                        padding: 20px;
+                    }
+                    .print-header {
+                        text-align: center;
+                        margin-bottom: 20px;
+                    }
+                    .print-title {
+                        font-size: 24px;
+                        font-weight: bold;
+                        margin-bottom: 5px;
+                    }
+                    .print-subtitle {
+                        font-size: 16px;
+                        color: #555;
+                        margin-bottom: 15px;
+                    }
+                    .print-info {
+                        font-size: 14px;
+                        margin-bottom: 20px;
+                        display: flex;
+                        justify-content: space-between;
+                    }
+                    table {
+                        width: 100%;
+                        border-collapse: collapse;
+                        margin-top: 20px;
+                    }
+                    th {
+                        background-color: #ffffff !important; /* Cabeçalho branco */
+                        padding: 10px;
+                        text-align: center;
+                        font-weight: bold;
+                        border: 1px solid #ddd;
+                    }
+                    td {
+                        padding: 8px;
+                        border: 0.5px solid #eee; /* Bordas sutis/transparentes */
+                        vertical-align: top;
+                    }
+                    .divisoria {
+                        background-color: #f2f2f2 !important; /* Cinza claro para divisões de cena */
+                        font-weight: bold;
+                        text-align: center;
+                        padding: 8px;
+                    }
+                    .page-break {
+                        page-break-after: always;
+                    }
+                    .tag-display {
+                        display: inline-block;
+                        padding: 2px 6px;
+                        margin: 2px;
+                        border-radius: 4px;
+                        font-size: 12px;
+                    }
+                }
+            </style>
+        `;
+        
+        // Criar cabeçalho para impressão
+        const printHeader = `
+            <div class="print-header">
+                <div class="print-title">${nome || 'Roteiro'}</div>
+                ${eventoNome ? `<div class="print-subtitle">Gravação: ${eventoNome}</div>` : ''}
+                <div class="print-info">
+                    <span>Tipo: ${tipoRoteiro || 'N/A'}</span>
+                    <span>Data: ${new Date(dataCriacaoDocumento).toLocaleDateString('pt-BR')}</span>
+                    <span>Ano/Mês: ${ano}/${mes}</span>
+                </div>
+            </div>
+        `;
+        
+        // Montar conteúdo completo para impressão
+        const printContents = `
+            <html>
+            <head>
+                <title>${nome || 'Roteiro'}</title>
+                ${printStyles}
+            </head>
+            <body>
+                ${printHeader}
+                ${tableClone.outerHTML}
+            </body>
+            </html>
+        `;
+        
+        const printWindow = window.open('', '_blank');
+        printWindow.document.write(printContents);
+        printWindow.document.close();
+        printWindow.focus();
+        
+        // Pequeno atraso para garantir que os estilos sejam aplicados
+        setTimeout(() => {
+            printWindow.print();
+            printWindow.close();
+        }, 500);
     };
 
-    if (loading && isEditing && !nome) { // Initial load for edit page
+    if (loading && isEditing && !nome) {
         return <p className="text-center text-gray-600 mt-10">Carregando dados do roteiro...</p>;
     }
 
-    // Helper for styling
-    const getCellStyle = (styleJson) => {
-        const styles = {};
-        if (styleJson?.cor_fundo) styles.backgroundColor = styleJson.cor_fundo;
-        if (styleJson?.cor_fonte) styles.color = styleJson.cor_fonte;
-        if (styleJson?.altura_personalizada) styles.height = styleJson.altura_personalizada;
-        // Text alignment is global: text-center
-        // Bold is per-field, not per-row style
-        return styles;
-    };
-
     return (
         <div className="container mx-auto p-4">
-            <div className="flex justify-between items-center mb-6">
-                <h1 className="text-3xl font-bold text-gray-800">
-                    {isEditing ? `Editar Roteiro: ${nome}` : 'Criar Novo Roteiro'}
-                </h1>
-                <Link to="/roteiros" className="text-blue-600 hover:text-blue-800">&larr; Voltar para Roteiros</Link>
+            {/* Header com design melhorado */}
+            <div className="bg-white shadow-md rounded-lg p-6 mb-6">
+                <div className="flex justify-between items-center mb-4">
+                    <h1 className="text-3xl font-bold text-gray-800">{isEditing ? 'Editar Roteiro' : 'Novo Roteiro'}</h1>
+                    {/* Botões */}
+                    <div className="flex space-x-2">
+                        {isEditing && (
+                            <>
+                                <button 
+                                    onClick={handleGeneratePdf}
+                                    className="bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-4 rounded-lg transition duration-150 ease-in-out flex items-center"
+                                    disabled={loading}
+                                >
+                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
+                                        <path fillRule="evenodd" d="M6 2a2 2 0 00-2 2v12a2 2 0 002 2h8a2 2 0 002-2V7.414A2 2 0 0015.414 6L12 2.586A2 2 0 0010.586 2H6zm5 6a1 1 0 10-2 0v3.586l-1.293-1.293a1 1 0 10-1.414 1.414l3 3a1 1 0 001.414 0l3-3a1 1 0 00-1.414-1.414L11 11.586V8z" clipRule="evenodd" />
+                                    </svg>
+                                    {loading ? 'Gerando...' : 'Gerar PDF'}
+                                </button>
+                                <button 
+                                    onClick={handlePrint}
+                                    className="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-lg transition duration-150 ease-in-out flex items-center"
+                                    disabled={loading}
+                                >
+                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
+                                        <path fillRule="evenodd" d="M5 4v3H4a2 2 0 00-2 2v3a2 2 0 002 2h1v2a2 2 0 002 2h6a2 2 0 002-2v-2h1a2 2 0 002-2V9a2 2 0 00-2-2h-1V4a2 2 0 00-2-2H7a2 2 0 00-2 2zm8 0H7v3h6V4zm0 8H7v4h6v-4z" clipRule="evenodd" />
+                                    </svg>
+                                    Imprimir
+                                </button>
+                            </>
+                        )}
+                        <Link to="/roteiros" className="bg-gray-500 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded-lg transition duration-150 ease-in-out flex items-center">
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
+                                <path fillRule="evenodd" d="M9.707 16.707a1 1 0 01-1.414 0l-6-6a1 1 0 010-1.414l6-6a1 1 0 011.414 1.414L5.414 9H17a1 1 0 110 2H5.414l4.293 4.293a1 1 0 010 1.414z" clipRule="evenodd" />
+                            </svg>
+                            Voltar
+                        </Link>
+                    </div>
+                </div>
+
+                {error && <div className="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 mb-4 rounded-md" role="alert">
+                    <p>{error}</p>
+                </div>}
+                
+                {successMessage && <div className="bg-green-100 border-l-4 border-green-500 text-green-700 p-4 mb-4 rounded-md" role="alert">
+                    <p>{successMessage}</p>
+                </div>}
             </div>
 
-            {error && <p className="bg-red-100 text-red-700 p-3 rounded mb-4">{error}</p>}
-            {successMessage && <p className="bg-green-100 text-green-700 p-3 rounded mb-4">{successMessage}</p>}
-
-            {/* Formulário de Metadados do Roteiro */}
-            <form onSubmit={handleSubmit} className="bg-white p-6 rounded-lg shadow mb-8">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-                    <div>
-                        <label htmlFor="nome" className="block text-sm font-medium text-gray-700">Nome do Roteiro:</label>
-                        <input type="text" id="nome" value={nome} onChange={(e) => setNome(e.target.value)} required 
-                               className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm" />
-                    </div>
-                    <div>
-                        <label htmlFor="ano" className="block text-sm font-medium text-gray-700">Ano:</label>
-                        <input type="number" id="ano" value={ano} onChange={(e) => setAno(parseInt(e.target.value))} required 
-                               className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm" />
-                    </div>
-                    <div>
-                        <label htmlFor="mes" className="block text-sm font-medium text-gray-700">Mês:</label>
-                        <select id="mes" value={mes} onChange={(e) => setMes(parseInt(e.target.value))} required
-                                className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
-                            {Array.from({length: 12}, (_, i) => i + 1).map(m => <option key={m} value={m}>{new Date(0,m-1).toLocaleString('pt-BR', {month: 'long'})}</option>)}
-                        </select>
-                    </div>
-                </div>
-                <div className="mb-4">
-                    <label htmlFor="dataCriacaoDocumento" className="block text-sm font-medium text-gray-700">Data de Criação do Documento:</label>
-                    <input type="date" id="dataCriacaoDocumento" value={dataCriacaoDocumento} onChange={(e) => setDataCriacaoDocumento(e.target.value)} 
-                           className="mt-1 block w-full md:w-1/3 px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm" />
-                </div>
-                <div className="mb-6">
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Tags:</label>
-                    <div className="flex flex-wrap gap-2">
-                        {allTags.map(tag => (
-                            <button 
-                                type="button"
-                                key={tag.id} 
-                                onClick={() => setTags(prev => prev.includes(tag.id) ? prev.filter(id => id !== tag.id) : [...prev, tag.id])}
-                                style={{ backgroundColor: tags.includes(tag.id) ? tag.cor : '#E5E7EB', color: tags.includes(tag.id) ? 'white' : 'black'}}
-                                className={`px-3 py-1 rounded-full text-sm font-medium border border-gray-300 focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-indigo-500`}
+            <form onSubmit={handleSubmit} className="bg-white shadow-md rounded-lg px-8 pt-6 pb-8 mb-4">
+                {/* Campos de informações do roteiro com layout melhorado */}
+                <div className="bg-gray-50 p-4 rounded-lg mb-6">
+                    <h2 className="text-xl font-semibold text-gray-700 mb-4">Informações do Roteiro</h2>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                        {/* Nome */} 
+                        <div>
+                            <label className="block text-gray-700 text-sm font-bold mb-2" htmlFor="nome">
+                                Nome do Roteiro
+                            </label>
+                            <input 
+                                id="nome" 
+                                type="text" 
+                                value={nome} 
+                                onChange={(e) => setNome(e.target.value)} 
+                                className="shadow appearance-none border rounded-lg w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline focus:ring-2 focus:ring-purple-500"
+                                required 
+                                placeholder="Digite o nome do roteiro"
+                            />
+                        </div>
+                        {/* Tipo */} 
+                        <div>
+                            <label className="block text-gray-700 text-sm font-bold mb-2" htmlFor="tipoRoteiro">
+                                Tipo
+                            </label>
+                            <input 
+                                id="tipoRoteiro" 
+                                type="text" 
+                                value={tipoRoteiro} 
+                                onChange={(e) => setTipoRoteiro(e.target.value)} 
+                                className="shadow appearance-none border rounded-lg w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline focus:ring-2 focus:ring-purple-500"
+                                placeholder="Ex: PROGRAMA AO VIVO, PODCAST"
+                            />
+                        </div>
+                        {/* Vincular à Gravação */} 
+                        <div>
+                            <label className="block text-gray-700 text-sm font-bold mb-2" htmlFor="eventoId">
+                                Vincular à Gravação (opcional)
+                            </label>
+                            <select
+                                id="eventoId"
+                                value={eventoId}
+                                onChange={handleEventoChange}
+                                className="shadow appearance-none border rounded-lg w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline focus:ring-2 focus:ring-purple-500"
+                                disabled={loadingEventos}
                             >
-                                {tag.nome}
-                            </button>
-                        ))}
+                                <option value="">Selecione uma gravação...</option>
+                                {eventos.map(evento => (
+                                    <option key={evento.id} value={evento.id}>{evento.nome}</option>
+                                ))}
+                            </select>
+                        </div>
+                        {/* Ano, Mês, Data Criação */} 
+                        <div>
+                            <label className="block text-gray-700 text-sm font-bold mb-2" htmlFor="ano">
+                                Ano
+                            </label>
+                            <input 
+                                id="ano" 
+                                type="number" 
+                                value={ano} 
+                                onChange={(e) => setAno(e.target.value)} 
+                                className="shadow appearance-none border rounded-lg w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline focus:ring-2 focus:ring-purple-500"
+                                required 
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-gray-700 text-sm font-bold mb-2" htmlFor="mes">
+                                Mês
+                            </label>
+                            <input 
+                                id="mes" 
+                                type="number" 
+                                min="1" max="12" 
+                                value={mes} 
+                                onChange={(e) => setMes(e.target.value)} 
+                                className="shadow appearance-none border rounded-lg w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline focus:ring-2 focus:ring-purple-500"
+                                required 
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-gray-700 text-sm font-bold mb-2" htmlFor="dataCriacaoDocumento">
+                                Data Criação Documento
+                            </label>
+                            <input 
+                                id="dataCriacaoDocumento" 
+                                type="date" 
+                                value={dataCriacaoDocumento} 
+                                onChange={(e) => setDataCriacaoDocumento(e.target.value)} 
+                                className="shadow appearance-none border rounded-lg w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline focus:ring-2 focus:ring-purple-500"
+                                required 
+                            />
+                        </div>
                     </div>
                 </div>
-                <div className="flex justify-end space-x-3">
-                    <button type="submit" disabled={loading} className="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded disabled:bg-green-300">
-                        {loading ? 'Salvando...' : (isEditing ? 'Atualizar Roteiro' : 'Criar Roteiro')}
+
+                {/* Tabela de Edição do Roteiro com design melhorado */}
+                <div className="bg-gray-50 p-4 rounded-lg mb-6">
+                    <h2 className="text-xl font-semibold text-gray-700 mb-4">Conteúdo do Roteiro</h2>
+                    <div id="roteiro-print-area" className="mb-6">
+                        <div className="overflow-x-auto rounded-lg border border-gray-200">
+                            <table className="min-w-full divide-y divide-gray-200">
+                                <thead className="bg-gradient-to-r from-purple-500 to-purple-700">
+                                    <tr>
+                                        {/* Cabeçalho Centralizado */}
+                                        <th scope="col" className="px-6 py-3 text-center text-xs font-medium text-white uppercase tracking-wider rounded-tl-lg">Localização / Tags</th>
+                                        <th scope="col" className="px-6 py-3 text-center text-xs font-medium text-white uppercase tracking-wider">Vídeo</th>
+                                        <th scope="col" className="px-6 py-3 text-center text-xs font-medium text-white uppercase tracking-wider">Tec / Transição</th>
+                                        <th scope="col" className="px-6 py-3 text-center text-xs font-medium text-white uppercase tracking-wider">Áudio</th>
+                                        <th scope="col" className="px-6 py-3 text-center text-xs font-medium text-white uppercase tracking-wider rounded-tr-lg">Ações</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="bg-white divide-y divide-gray-200">
+                                    {cenas.map((cena) => (
+                                        <tr key={cena.id} className={cena.type === 'divisoria' ? 'bg-gray-100' : ''} data-divisoria={cena.type === 'divisoria' ? 'true' : 'false'}>
+                                            {cena.type === 'divisoria' ? (
+                                                <td colSpan="5" className="px-6 py-3 whitespace-nowrap divisoria">
+                                                    <div className="flex items-center justify-between">
+                                                        <input 
+                                                            type="text" 
+                                                            value={cena.nomeDivisao || ''} 
+                                                            onChange={(e) => handleCenaChange(cena.id, 'nomeDivisao', e.target.value)} 
+                                                            className="block w-full px-3 py-2 border-0 bg-gray-100 font-bold text-gray-800 focus:ring-0 focus:border-0 text-center text-lg"
+                                                            placeholder="Nome da Divisão de Cena"
+                                                        />
+                                                        <button 
+                                                            type="button" 
+                                                            onClick={() => removeLinha(cena.id)} 
+                                                            className="ml-4 text-red-600 hover:text-red-800 text-xs bg-white hover:bg-red-100 p-1 rounded-full"
+                                                        >
+                                                            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                                                                <path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd" />
+                                                            </svg>
+                                                        </button>
+                                                    </div>
+                                                </td>
+                                            ) : (
+                                                <>
+                                                    {/* Coluna Localização com Tags */}
+                                                    <td className="px-6 py-4 whitespace-normal align-top w-1/4">
+                                                        <textarea
+                                                            value={cena.localizacao || ''}
+                                                            onChange={(e) => handleCenaChange(cena.id, 'localizacao', e.target.value)}
+                                                            className="block w-full px-3 py-2 text-sm text-gray-900 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 mb-2 resize-none"
+                                                            rows="2"
+                                                            placeholder="Localização"
+                                                        />
+                                                        {/* Componente CreatableSelect para Tags */}
+                                                        <div className="tag-selector-container">
+                                                            <CreatableSelect
+                                                                isMulti
+                                                                isClearable
+                                                                options={allTags}
+                                                                value={cena.tags}
+                                                                onChange={(selected) => handleCenaTagsChange(cena.id, selected)}
+                                                                onCreateOption={handleCreateTag} // Função para criar nova tag
+                                                                placeholder="Adicionar/Criar Tags..."
+                                                                formatCreateLabel={(inputValue) => `Criar tag "${inputValue}"`}
+                                                                styles={tagSelectStyles} // Aplicar estilos customizados
+                                                                isLoading={loadingTags}
+                                                                isDisabled={loadingTags}
+                                                                classNamePrefix="react-select"
+                                                            />
+                                                        </div>
+                                                    </td>
+                                                    {/* Coluna Vídeo */}
+                                                    <td className="px-6 py-4 whitespace-normal align-top w-1/4">
+                                                        <textarea 
+                                                            value={cena.video || ''} 
+                                                            onChange={(e) => handleCenaChange(cena.id, 'video', e.target.value)} 
+                                                            className="block w-full px-3 py-2 text-sm text-gray-900 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 resize-none"
+                                                            rows="4"
+                                                            placeholder="Descrição do vídeo"
+                                                        />
+                                                    </td>
+                                                    {/* Coluna Tec/Transição */}
+                                                    <td className="px-6 py-4 whitespace-normal align-top w-1/4">
+                                                        <textarea 
+                                                            value={cena.tec_transicao || ''} 
+                                                            onChange={(e) => handleCenaChange(cena.id, 'tec_transicao', e.target.value)} 
+                                                            className="block w-full px-3 py-2 text-sm text-gray-900 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 resize-none"
+                                                            rows="4"
+                                                            placeholder="Informações técnicas e transições"
+                                                        />
+                                                    </td>
+                                                    {/* Coluna Áudio */}
+                                                    <td className="px-6 py-4 whitespace-normal align-top w-1/4">
+                                                        <textarea 
+                                                            value={cena.audio || ''} 
+                                                            onChange={(e) => handleCenaChange(cena.id, 'audio', e.target.value)} 
+                                                            className="block w-full px-3 py-2 text-sm text-gray-900 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 resize-none"
+                                                            rows="4"
+                                                            placeholder="Descrição do áudio"
+                                                        />
+                                                    </td>
+                                                    {/* Coluna Ações */}
+                                                    <td className="px-6 py-4 whitespace-nowrap text-center text-sm font-medium align-top">
+                                                        <button 
+                                                            type="button" 
+                                                            onClick={() => removeLinha(cena.id)} 
+                                                            className="text-white bg-red-500 hover:bg-red-600 rounded-full p-2 transition duration-150 ease-in-out"
+                                                            title="Remover linha"
+                                                        >
+                                                            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                                                                <path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd" />
+                                                            </svg>
+                                                        </button>
+                                                    </td>
+                                                </>
+                                            )}
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                {/* Botões Adicionar Linha / Divisão com design melhorado */} 
+                <div className="flex items-center justify-start space-x-4 mb-6">
+                    <button 
+                        type="button" 
+                        onClick={addLinha} 
+                        className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg transition duration-150 ease-in-out flex items-center"
+                    >
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
+                            <path fillRule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clipRule="evenodd" />
+                        </svg>
+                        Adicionar Linha
                     </button>
-                    <button type="button" onClick={handleGeneratePdf} className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">
-                        Gerar PDF (Espelho)
+                    <button 
+                        type="button" 
+                        onClick={addDivisaoCena} 
+                        className="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg transition duration-150 ease-in-out flex items-center"
+                    >
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
+                            <path d="M5 3a2 2 0 00-2 2v2a2 2 0 002 2h2a2 2 0 002-2V5a2 2 0 00-2-2H5zM5 11a2 2 0 00-2 2v2a2 2 0 002 2h2a2 2 0 002-2v-2a2 2 0 00-2-2H5zM11 5a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V5zM14 11a1 1 0 011 1v1h1a1 1 0 110 2h-1v1a1 1 0 11-2 0v-1h-1a1 1 0 110-2h1v-1a1 1 0 011-1z" />
+                        </svg>
+                        Adicionar Divisão de Cena
+                    </button>
+                </div>
+
+                {/* Botão Salvar com design melhorado */}
+                <div className="flex items-center justify-end">
+                    <button 
+                        type="submit" 
+                        className="bg-gradient-to-r from-purple-600 to-purple-800 hover:from-purple-700 hover:to-purple-900 text-white font-bold py-3 px-8 rounded-lg transition duration-150 ease-in-out shadow-md flex items-center"
+                        disabled={loading}
+                    >
+                        {loading ? (
+                            <>
+                                <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                </svg>
+                                Salvando...
+                            </>
+                        ) : (
+                            <>
+                                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
+                                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                                </svg>
+                                {isEditing ? 'Salvar Alterações' : 'Criar Roteiro'}
+                            </>
+                        )}
                     </button>
                 </div>
             </form>
-
-            {/* Editor de Cenas */}
-            <div className="bg-white p-6 rounded-lg shadow">
-                <div className="flex justify-between items-center mb-2">
-                    <h2 className="text-2xl font-semibold text-gray-700">Cenas do Roteiro</h2>
-                     {logoEmpresaUrl && <img src={logoEmpresaUrl} alt="Logo da Empresa" className="max-h-12 object-contain" />}
-                </div>
-                <p className="text-sm text-gray-500 mb-1">Nome do Roteiro: {nome || "(não definido)"}</p>
-                <p className="text-sm text-gray-500 mb-4">Data: {dataCriacaoDocumento ? new Date(dataCriacaoDocumento).toLocaleDateString('pt-BR', {timeZone: 'UTC'}) : "N/A"} | Páginas: {Math.ceil(cenas.length / 5)} (estimado)</p>
-
-                <div className="overflow-x-auto">
-                    <table className="min-w-full divide-y divide-gray-200 border border-gray-300">
-                        <thead className="bg-gray-50">
-                            <tr>
-                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider border-r border-gray-300 w-10">#</th>
-                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider border-r border-gray-300">Vídeo</th>
-                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider border-r border-gray-300">Tec/Transição</th>
-                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Áudio</th>
-                                {cenas.length > 0 && Object.keys(cenas[0].colunas_personalizadas_json || {}).map(colName => (
-                                    <th key={colName} className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider border-l border-gray-300">
-                                        {colName}
-                                        <button onClick={() => handleRemoveCustomColumn(0, colName)} className="ml-2 text-red-500 hover:text-red-700 text-xs">(Remover Coluna)</button>
-                                    </th>
-                                ))}
-                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider border-l border-gray-300 w-20">Ações</th>
-                            </tr>
-                        </thead>
-                        <tbody className="bg-white divide-y divide-gray-200">
-                            {cenas.map((cena, index) => (
-                                <tr key={index} style={getCellStyle(cena.estilo_linha_json)} className="text-center align-top">
-                                    <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500 border-r border-gray-300 align-middle">{index + 1}</td>
-                                    <td className="border-r border-gray-300 p-0 align-top">
-                                        <textarea value={cena.video} onChange={(e) => handleCenaChange(index, 'video', e.target.value)} 
-                                                  className="w-full h-24 p-2 border-none focus:ring-0 resize-y text-sm uppercase text-center" placeholder="Descrição do vídeo..."></textarea>
-                                    </td>
-                                    <td className="border-r border-gray-300 p-0 align-top">
-                                        <textarea value={cena.tec_transicao} onChange={(e) => handleCenaChange(index, 'tec_transicao', e.target.value)} 
-                                                  className="w-full h-24 p-2 border-none focus:ring-0 resize-y text-sm uppercase text-center" placeholder="Técnica ou transição..."></textarea>
-                                    </td>
-                                    <td className="p-0 align-top">
-                                        <textarea value={cena.audio} onChange={(e) => handleCenaChange(index, 'audio', e.target.value)} 
-                                                  className="w-full h-24 p-2 border-none focus:ring-0 resize-y text-sm uppercase text-center" placeholder="Texto do áudio..."></textarea>
-                                    </td>
-                                    {Object.entries(cena.colunas_personalizadas_json || {}).map(([colName, colValue]) => (
-                                        <td key={colName} className="border-l border-gray-300 p-0 align-top">
-                                            <textarea value={colValue} onChange={(e) => handleCustomColumnChange(index, colName, e.target.value)} 
-                                                      className="w-full h-24 p-2 border-none focus:ring-0 resize-y text-sm uppercase text-center" placeholder={`Conteúdo ${colName}...`}></textarea>
-                                        </td>
-                                    ))}
-                                    <td className="px-2 py-2 whitespace-nowrap text-sm font-medium border-l border-gray-300 align-middle">
-                                        <button onClick={() => removeCena(index)} disabled={cenas.length <=1} className="text-red-600 hover:text-red-900 disabled:text-gray-400 mb-1 w-full text-xs">Remover Cena</button>
-                                        <input type="color" title="Cor da Fonte" value={cena.estilo_linha_json?.cor_fonte || '#000000'} onChange={(e) => handleCenaChange(index, 'estilo_linha_json', {cor_fonte: e.target.value})} className="w-full h-6 mb-1"/>
-                                        <input type="color" title="Cor do Fundo" value={cena.estilo_linha_json?.cor_fundo || '#FFFFFF'} onChange={(e) => handleCenaChange(index, 'estilo_linha_json', {cor_fundo: e.target.value})} className="w-full h-6 mb-1"/>
-                                        <input type="text" title="Altura da Linha (ex: 100px)" placeholder="Altura (px)" value={cena.estilo_linha_json?.altura_personalizada || ''} onChange={(e) => handleCenaChange(index, 'estilo_linha_json', {altura_personalizada: e.target.value})} className="w-full text-xs p-1 border border-gray-300 rounded"/>
-                                        {/* Bold per field can be added with a WYSIWYG or markdown support, complex for simple textarea */}
-                                    </td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
-                </div>
-                <div className="mt-4 flex justify-between">
-                    <button onClick={addCena} className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded text-sm">
-                        Adicionar Nova Cena
-                    </button>
-                    <div>
-                        <input type="text" id="newCustomColumnName" placeholder="Nome da Nova Coluna" className="p-2 border border-gray-300 rounded-l text-sm"/>
-                        <button onClick={() => handleAddCustomColumn(0, document.getElementById('newCustomColumnName').value)} className="bg-purple-500 hover:bg-purple-700 text-white font-bold py-2 px-3 rounded-r text-sm">
-                            Criar Coluna Personalizada
-                        </button>
-                    </div>
-                </div>
-            </div>
         </div>
     );
 };
 
 export default RoteiroEditPage;
-

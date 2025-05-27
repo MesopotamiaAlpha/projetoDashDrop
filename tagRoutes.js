@@ -20,3 +20,4 @@ router.route("/:id")
     .delete(authenticateToken, deleteTag);  // Excluir tag por ID
 
 module.exports = router;
+

@@ -9,9 +9,6 @@ router.post("/", authenticateToken, roteiroController.createRoteiro);
 // GET /api/roteiros - Get all roteiros (with filters for ano, mes, tags)
 router.get("/", authenticateToken, roteiroController.getAllRoteiros);
 
-// GET /api/roteiros/eventos-dropdown - Get all eventos for dropdown
-router.get("/eventos-dropdown", authenticateToken, roteiroController.getEventosDropdown);
-
 // GET /api/roteiros/:id - Get a specific roteiro by ID
 router.get("/:id", authenticateToken, roteiroController.getRoteiroById);
 
@@ -39,9 +36,6 @@ router.delete("/:roteiroId/cenas/:cenaId", authenticateToken, roteiroController.
 
 // GET /api/roteiros/:id/pdf - Generate PDF for a roteiro
 router.get("/:id/pdf", authenticateToken, roteiroController.exportRoteiroToPdf);
-
-// Alias para a rota de PDF para compatibilidade com o frontend
-router.get("/:id/export-pdf", authenticateToken, roteiroController.exportRoteiroToPdf);
 
 // Comentando temporariamente a rota problemática
 // router.put("/:roteiroId/cenas/reorder", authenticateToken, roteiroController.reorderCenas);

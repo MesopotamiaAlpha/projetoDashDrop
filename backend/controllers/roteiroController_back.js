@@ -5,7 +5,7 @@ const path = require("path");
 
 // Create a new roteiro
 const createRoteiro = async (req, res) => {
-    const { nome, ano, mes, conteudo_principal, data_criacao_documento, tags, tipo_roteiro, evento_id } = req.body; 
+    const { nome, ano, mes, conteudo_principal, data_criacao_documento, tags, tipo_roteiro } = req.body; 
     const userId = req.user.userId;
 
     if (!nome || !ano || !mes) {
@@ -18,8 +18,8 @@ const createRoteiro = async (req, res) => {
         await connection.beginTransaction();
 
         const [result] = await connection.query(
-            "INSERT INTO Roteiros (nome, ano, mes, conteudo_principal, data_criacao_documento, tipo_roteiro, evento_id, usuario_id, criado_por_id, atualizado_por_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            [nome, ano, mes, conteudo_principal, data_criacao_documento, tipo_roteiro, evento_id, userId, userId, userId]
+            "INSERT INTO Roteiros (nome, ano, mes, conteudo_principal, data_criacao_documento, tipo_roteiro, usuario_id, criado_por_id, atualizado_por_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            [nome, ano, mes, conteudo_principal, data_criacao_documento, tipo_roteiro, userId, userId, userId]
         );
         const newRoteiroId = result.insertId;
 
@@ -28,7 +28,7 @@ const createRoteiro = async (req, res) => {
             await connection.query("INSERT INTO RoteiroTags (roteiro_id, tag_id) VALUES ?", [tagValues]);
         }
 
-        await logAudit("Roteiros", newRoteiroId, "CRIACAO", userId, { nome, ano, mes, tipo_roteiro, tags, evento_id });
+        await logAudit("Roteiros", newRoteiroId, "CRIACAO", userId, { nome, ano, mes, tipo_roteiro, tags });
         await connection.commit();
 
         res.status(201).json({ 
@@ -37,8 +37,7 @@ const createRoteiro = async (req, res) => {
             nome, 
             ano, 
             mes,
-            tipo_roteiro,
-            evento_id 
+            tipo_roteiro 
         });
 
     } catch (error) {
@@ -126,10 +125,10 @@ const getRoteiroById = async (req, res) => {
 // Update a roteiro by ID
 const updateRoteiro = async (req, res) => {
     const { id } = req.params;
-    const { nome, ano, mes, conteudo_principal, data_criacao_documento, tags, tipo_roteiro, evento_id } = req.body; 
+    const { nome, ano, mes, conteudo_principal, data_criacao_documento, tags, tipo_roteiro } = req.body; 
     const userId = req.user.userId;
 
-    if (!nome && !ano && !mes && !conteudo_principal && !data_criacao_documento && !tags && !tipo_roteiro && evento_id === undefined) {
+    if (!nome && !ano && !mes && !conteudo_principal && !data_criacao_documento && !tags && !tipo_roteiro) {
         return res.status(400).json({ message: "Nenhum dado fornecido para atualização." });
     }
 
@@ -145,7 +144,6 @@ const updateRoteiro = async (req, res) => {
         if (conteudo_principal !== undefined) fieldsToUpdate.conteudo_principal = conteudo_principal;
         if (data_criacao_documento !== undefined) fieldsToUpdate.data_criacao_documento = data_criacao_documento;
         if (tipo_roteiro !== undefined) fieldsToUpdate.tipo_roteiro = tipo_roteiro;
-        if (evento_id !== undefined) fieldsToUpdate.evento_id = evento_id;
         fieldsToUpdate.atualizado_por_id = userId;
 
         if (Object.keys(fieldsToUpdate).length > 1) { 
@@ -239,7 +237,7 @@ const deleteRoteiro = async (req, res) => {
 
 const addCenaToRoteiro = async (req, res) => {
     const { roteiroId } = req.params;
-    const { ordem, video, tec_transicao, audio, estilo_linha_json, colunas_personalizadas_json, localizacao, tipo_linha, nome_divisao, tagIds } = req.body;
+    const { ordem, video, tec_transicao, audio, estilo_linha_json, colunas_personalizadas_json, localizacao, tipo_linha } = req.body;
     const userId = req.user.userId;
 
     try {
@@ -248,33 +246,15 @@ const addCenaToRoteiro = async (req, res) => {
             return res.status(404).json({ message: "Roteiro pai não encontrado." });
         }
 
-        let connection;
-        try {
-            connection = await pool.getConnection();
-            await connection.beginTransaction();
+        const [result] = await pool.query(
+            "INSERT INTO CenasRoteiro (roteiro_id, ordem, video, tec_transicao, audio, estilo_linha_json, colunas_personalizadas_json, localizacao, tipo_linha, criado_por_id, atualizado_por_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            [roteiroId, ordem || 0, video, tec_transicao, audio, estilo_linha_json, colunas_personalizadas_json, localizacao, tipo_linha, userId, userId]
+        );
+        const newCenaId = result.insertId;
 
-            const [result] = await connection.query(
-                "INSERT INTO CenasRoteiro (roteiro_id, ordem, video, tec_transicao, audio, estilo_linha_json, colunas_personalizadas_json, localizacao, tipo_linha, nome_divisao, criado_por_id, atualizado_por_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                [roteiroId, ordem || 0, video, tec_transicao, audio, estilo_linha_json, colunas_personalizadas_json, localizacao, tipo_linha, nome_divisao, userId, userId]
-            );
-            const newCenaId = result.insertId;
+        await logAudit("CenasRoteiro", newCenaId, "CRIACAO", userId, { roteiroId, video, tipo_linha });
 
-            // Adicionar tags à cena se fornecidas
-            if (tagIds && Array.isArray(tagIds) && tagIds.length > 0) {
-                const tagValues = tagIds.map(tagId => [newCenaId, tagId]);
-                await connection.query("INSERT INTO CenaTags (cena_id, tag_id) VALUES ?", [tagValues]);
-            }
-
-            await connection.commit();
-            await logAudit("CenasRoteiro", newCenaId, "CRIACAO", userId, { roteiroId, video, tipo_linha, tagIds });
-
-            res.status(201).json({ message: "Linha adicionada com sucesso!", cenaId: newCenaId });
-        } catch (error) {
-            if (connection) await connection.rollback();
-            throw error;
-        } finally {
-            if (connection) connection.release();
-        }
+        res.status(201).json({ message: "Linha adicionada com sucesso!", cenaId: newCenaId });
     } catch (error) {
         console.error("Erro ao adicionar linha ao roteiro:", error);
         res.status(500).json({ message: "Erro interno do servidor.", error: error.message });
@@ -293,78 +273,26 @@ const getCenasForRoteiro = async (req, res) => {
 };
 
 async function getCenasForRoteiroInternal(roteiroId, dbConnection) {
-    // Consulta para buscar cenas com suas tags
-    const query = `
-        SELECT c.*, 
-               GROUP_CONCAT(DISTINCT t.id SEPARATOR ',') as tag_ids,
-               GROUP_CONCAT(DISTINCT t.nome SEPARATOR ',') as tag_nomes,
-               GROUP_CONCAT(DISTINCT t.cor SEPARATOR ',') as tag_cores
-        FROM CenasRoteiro c
-        LEFT JOIN CenaTags ct ON c.id = ct.cena_id
-        LEFT JOIN Tags t ON ct.tag_id = t.id
-        WHERE c.roteiro_id = ?
-        GROUP BY c.id
-        ORDER BY c.ordem ASC
-    `;
-    
-    const [cenas] = await (dbConnection || pool).query(query, [roteiroId]);
-    
-    return cenas.map(c => {
-        // Processar tags se existirem
-        const tags = c.tag_ids ? c.tag_ids.split(',').map((id, index) => ({
-            id: parseInt(id),
-            nome: c.tag_nomes.split(',')[index],
-            cor: c.tag_cores.split(',')[index]
-        })) : [];
-        
-        return {
-            ...c,
-            estilo_linha_json: c.estilo_linha_json ? JSON.parse(c.estilo_linha_json) : null,
-            colunas_personalizadas_json: c.colunas_personalizadas_json ? JSON.parse(c.colunas_personalizadas_json) : null,
-            tags: tags,
-            tag_ids: undefined,
-            tag_nomes: undefined,
-            tag_cores: undefined
-        };
-    });
+    const [cenas] = await (dbConnection || pool).query("SELECT * FROM CenasRoteiro WHERE roteiro_id = ? ORDER BY ordem ASC", [roteiroId]);
+    return cenas.map(c => ({
+        ...c,
+        estilo_linha_json: c.estilo_linha_json ? JSON.parse(c.estilo_linha_json) : null,
+        colunas_personalizadas_json: c.colunas_personalizadas_json ? JSON.parse(c.colunas_personalizadas_json) : null
+    }));
 }
 
 const getCenaById = async (req, res) => {
     const { roteiroId, cenaId } = req.params;
     try {
-        const query = `
-            SELECT c.*, 
-                   GROUP_CONCAT(DISTINCT t.id SEPARATOR ',') as tag_ids,
-                   GROUP_CONCAT(DISTINCT t.nome SEPARATOR ',') as tag_nomes,
-                   GROUP_CONCAT(DISTINCT t.cor SEPARATOR ',') as tag_cores
-            FROM CenasRoteiro c
-            LEFT JOIN CenaTags ct ON c.id = ct.cena_id
-            LEFT JOIN Tags t ON ct.tag_id = t.id
-            WHERE c.id = ? AND c.roteiro_id = ?
-            GROUP BY c.id
-        `;
-        
-        const [cenas] = await pool.query(query, [cenaId, roteiroId]);
-        
+        const [cenas] = await pool.query("SELECT * FROM CenasRoteiro WHERE id = ? AND roteiro_id = ?", [cenaId, roteiroId]);
         if (cenas.length === 0) {
             return res.status(404).json({ message: "Cena não encontrada neste roteiro." });
         }
-        
         const cena = cenas[0];
-        const tags = cena.tag_ids ? cena.tag_ids.split(',').map((id, index) => ({
-            id: parseInt(id),
-            nome: cena.tag_nomes.split(',')[index],
-            cor: cena.tag_cores.split(',')[index]
-        })) : [];
-        
         res.json({
             ...cena,
             estilo_linha_json: cena.estilo_linha_json ? JSON.parse(cena.estilo_linha_json) : null,
-            colunas_personalizadas_json: cena.colunas_personalizadas_json ? JSON.parse(cena.colunas_personalizadas_json) : null,
-            tags: tags,
-            tag_ids: undefined,
-            tag_nomes: undefined,
-            tag_cores: undefined
+            colunas_personalizadas_json: cena.colunas_personalizadas_json ? JSON.parse(cena.colunas_personalizadas_json) : null
         });
     } catch (error) {
         console.error("Erro ao buscar cena por ID:", error);
@@ -374,7 +302,7 @@ const getCenaById = async (req, res) => {
 
 const updateCenaInRoteiro = async (req, res) => {
     const { roteiroId, cenaId } = req.params;
-    const { ordem, video, tec_transicao, audio, estilo_linha_json, colunas_personalizadas_json, localizacao, tipo_linha, nome_divisao, tagIds } = req.body;
+    const { ordem, video, tec_transicao, audio, estilo_linha_json, colunas_personalizadas_json, localizacao, tipo_linha } = req.body;
     const userId = req.user.userId;
 
     const fieldsToUpdate = {};
@@ -386,132 +314,47 @@ const updateCenaInRoteiro = async (req, res) => {
     if (colunas_personalizadas_json !== undefined) fieldsToUpdate.colunas_personalizadas_json = JSON.stringify(colunas_personalizadas_json);
     if (localizacao !== undefined) fieldsToUpdate.localizacao = localizacao;
     if (tipo_linha !== undefined) fieldsToUpdate.tipo_linha = tipo_linha;
-    if (nome_divisao !== undefined) fieldsToUpdate.nome_divisao = nome_divisao;
     fieldsToUpdate.atualizado_por_id = userId;
 
-    if (Object.keys(fieldsToUpdate).length <= 1 && tagIds === undefined) { 
+    if (Object.keys(fieldsToUpdate).length <= 1) { 
         return res.status(400).json({ message: "Nenhum dado fornecido para atualização da linha." });
     }
 
-    let connection;
     try {
-        connection = await pool.getConnection();
-        await connection.beginTransaction();
-
-        if (Object.keys(fieldsToUpdate).length > 1) {
-            const [result] = await connection.query("UPDATE CenasRoteiro SET ? WHERE id = ? AND roteiro_id = ?", [fieldsToUpdate, cenaId, roteiroId]);
-            if (result.affectedRows === 0) {
-                await connection.rollback();
-                return res.status(404).json({ message: "Linha não encontrada ou não pertence a este roteiro." });
-            }
+        const [result] = await pool.query("UPDATE CenasRoteiro SET ? WHERE id = ? AND roteiro_id = ?", [fieldsToUpdate, cenaId, roteiroId]);
+        if (result.affectedRows === 0) {
+            return res.status(404).json({ message: "Linha não encontrada ou não pertence a este roteiro." });
         }
-
-        // Atualizar tags se fornecidas
-        if (tagIds !== undefined) {
-            await connection.query("DELETE FROM CenaTags WHERE cena_id = ?", [cenaId]);
-            if (Array.isArray(tagIds) && tagIds.length > 0) {
-                const tagValues = tagIds.map(tagId => [cenaId, tagId]);
-                await connection.query("INSERT INTO CenaTags (cena_id, tag_id) VALUES ?", [tagValues]);
-            }
-        }
-
-        await connection.commit();
-        await logAudit("CenasRoteiro", parseInt(cenaId), "ATUALIZACAO", userId, {...fieldsToUpdate, tagIds});
+        await logAudit("CenasRoteiro", parseInt(cenaId), "ATUALIZACAO", userId, fieldsToUpdate);
         
-        // Buscar a cena atualizada com suas tags
-        const query = `
-            SELECT c.*, 
-                   GROUP_CONCAT(DISTINCT t.id SEPARATOR ',') as tag_ids,
-                   GROUP_CONCAT(DISTINCT t.nome SEPARATOR ',') as tag_nomes,
-                   GROUP_CONCAT(DISTINCT t.cor SEPARATOR ',') as tag_cores
-            FROM CenasRoteiro c
-            LEFT JOIN CenaTags ct ON c.id = ct.cena_id
-            LEFT JOIN Tags t ON ct.tag_id = t.id
-            WHERE c.id = ?
-            GROUP BY c.id
-        `;
-        
-        const [updatedCenas] = await connection.query(query, [cenaId]);
-        
-        if (updatedCenas.length === 0) {
-            return res.status(404).json({ message: "Não foi possível recuperar a cena atualizada." });
-        }
-        
-        const updatedCena = updatedCenas[0];
-        const tags = updatedCena.tag_ids ? updatedCena.tag_ids.split(',').map((id, index) => ({
-            id: parseInt(id),
-            nome: updatedCena.tag_nomes.split(',')[index],
-            cor: updatedCena.tag_cores.split(',')[index]
-        })) : [];
-        
+        const [updatedCena] = await pool.query("SELECT * FROM CenasRoteiro WHERE id = ?", [cenaId]);
         res.json({
             message: "Linha atualizada com sucesso!", 
             cena: {
-                ...updatedCena,
-                estilo_linha_json: updatedCena.estilo_linha_json ? JSON.parse(updatedCena.estilo_linha_json) : null,
-                colunas_personalizadas_json: updatedCena.colunas_personalizadas_json ? JSON.parse(updatedCena.colunas_personalizadas_json) : null,
-                tags: tags,
-                tag_ids: undefined,
-                tag_nomes: undefined,
-                tag_cores: undefined
+                ...updatedCena[0],
+                estilo_linha_json: updatedCena[0].estilo_linha_json ? JSON.parse(updatedCena[0].estilo_linha_json) : null,
+                colunas_personalizadas_json: updatedCena[0].colunas_personalizadas_json ? JSON.parse(updatedCena[0].colunas_personalizadas_json) : null
             }
         });
     } catch (error) {
-        if (connection) await connection.rollback();
         console.error("Erro ao atualizar linha:", error);
         res.status(500).json({ message: "Erro interno do servidor.", error: error.message });
-    } finally {
-        if (connection) connection.release();
     }
 };
 
 const deleteCenaFromRoteiro = async (req, res) => {
     const { roteiroId, cenaId } = req.params;
     const userId = req.user.userId;
-    let connection;
     try {
-        connection = await pool.getConnection();
-        await connection.beginTransaction();
-        
-        // Primeiro excluir as tags associadas à cena
-        await connection.query("DELETE FROM CenaTags WHERE cena_id = ?", [cenaId]);
-        
-        // Depois excluir a cena
-        const [result] = await connection.query("DELETE FROM CenasRoteiro WHERE id = ? AND roteiro_id = ?", [cenaId, roteiroId]);
-        
+        const [result] = await pool.query("DELETE FROM CenasRoteiro WHERE id = ? AND roteiro_id = ?", [cenaId, roteiroId]);
         if (result.affectedRows === 0) {
-            await connection.rollback();
             return res.status(404).json({ message: "Linha não encontrada ou não pertence a este roteiro." });
         }
-        
-        await connection.commit();
         await logAudit("CenasRoteiro", parseInt(cenaId), "DELECAO", userId, { roteiroId, cenaId });
         res.status(200).json({ message: "Linha excluída com sucesso!" });
     } catch (error) {
-        if (connection) await connection.rollback();
         console.error("Erro ao excluir linha:", error);
         res.status(500).json({ message: "Erro interno do servidor.", error: error.message });
-    } finally {
-        if (connection) connection.release();
-    }
-};
-
-// Endpoint para buscar eventos para o dropdown
-const getEventosDropdown = async (req, res) => {
-    try {
-        // Consulta para buscar todos os eventos do calendário
-        const query = `
-            SELECT id, nome_gravacao as nome
-            FROM EventosCalendario
-            ORDER BY data_evento DESC
-        `;
-        
-        const [eventos] = await pool.query(query);
-        
-        res.json(eventos);
-    } catch (error) {
-        console.error("Erro ao buscar eventos para dropdown:", error);
-        res.status(500).json({ message: "Erro interno do servidor ao buscar eventos.", error: error.message });
     }
 };
 
@@ -526,19 +369,6 @@ const exportRoteiroToPdf = async (req, res) => {
         }
         
         console.log(`Roteiro encontrado: ${roteiro.nome}, processando dados para PDF`);
-        
-        // Buscar nome do evento vinculado, se existir
-        let eventoNome = null;
-        if (roteiro.evento_id) {
-            try {
-                const [eventos] = await pool.query("SELECT nome_gravacao FROM EventosCalendario WHERE id = ?", [roteiro.evento_id]);
-                if (eventos.length > 0) {
-                    eventoNome = eventos[0].nome_gravacao;
-                }
-            } catch (eventoErr) {
-                console.error(`Erro ao buscar nome do evento: ${eventoErr.message}`);
-            }
-        }
         
         // Definir colunas padrão caso não existam no conteudo_principal
         let colunasVisiveis = [];
@@ -567,7 +397,6 @@ const exportRoteiroToPdf = async (req, res) => {
         html += `<div class="roteiro-header">
                     <img src="${roteiro.logo_url || 'https://via.placeholder.com/150x50?text=Logo+Empresa'}" alt="Logo da Empresa">
                     <h1>${roteiro.nome}</h1>
-                    ${eventoNome ? `<h2>Gravação: ${eventoNome}</h2>` : ''}
                  </div>`;
         html += `<div class="roteiro-details">
                     <p><strong>Data de Criação do Documento:</strong> ${roteiro.data_criacao_documento ? new Date(roteiro.data_criacao_documento).toLocaleDateString("pt-BR") : 'N/A'}</p>
@@ -672,6 +501,6 @@ module.exports = {
     getCenaById,
     updateCenaInRoteiro,
     deleteCenaFromRoteiro,
-    exportRoteiroToPdf,
-    getEventosDropdown
-};
+    exportRoteiroToPdf
+}; 
+

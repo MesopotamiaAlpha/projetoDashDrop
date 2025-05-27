@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import axios from 'axios';
-import { useAuth } from '../contexts/AuthContext'; // Assuming you have an AuthContext for API calls
+import { useAuth } from '../contexts/AuthContext'; 
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001/api';
 
@@ -10,12 +10,12 @@ const RoteirosPage = () => {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
     const [filtroAno, setFiltroAno] = useState(new Date().getFullYear());
-    const [filtroMes, setFiltroMes] = useState(''); // Empty means all months
+    const [filtroMes, setFiltroMes] = useState(''); 
     const [availableYears, setAvailableYears] = useState([]);
     const [allTags, setAllTags] = useState([]);
     const [selectedTagIds, setSelectedTagIds] = useState([]);
 
-    const { currentUser } = useAuth(); // For authenticated API calls
+    const { currentUser } = useAuth(); 
 
     const fetchRoteiros = useCallback(async () => {
         if (!currentUser) return;
@@ -52,13 +52,17 @@ const RoteirosPage = () => {
     }, [currentUser]);
 
     useEffect(() => {
-        // Populate available years (e.g., last 5 years + current year + next year)
-        const currentYear = new Date().getFullYear();
         const years = [];
-        for (let i = currentYear + 1; i >= currentYear - 5; i--) {
+        for (let i = 2035; i >= 2025; i--) {
             years.push(i);
         }
         setAvailableYears(years);
+        const currentYear = new Date().getFullYear();
+        if (currentYear >= 2025 && currentYear <= 2035) {
+            setFiltroAno(currentYear);
+        } else {
+            setFiltroAno(2025); 
+        }
         fetchTags();
     }, [fetchTags]);
 
@@ -81,7 +85,6 @@ const RoteirosPage = () => {
                 headers: { Authorization: `Bearer ${localStorage.getItem('authToken')}` }
             });
             setRoteiros(prevRoteiros => prevRoteiros.filter(r => r.id !== roteiroId));
-            // Optionally, show a success notification
         } catch (err) {
             console.error("Erro ao excluir roteiro:", err);
             setError(err.response?.data?.message || 'Falha ao excluir roteiro.');
@@ -103,7 +106,6 @@ const RoteirosPage = () => {
 
             {error && <p className="bg-red-100 text-red-700 p-3 rounded mb-4">{error}</p>}
 
-            {/* Filtros */}
             <div className="bg-white p-4 rounded-lg shadow mb-6 flex flex-wrap gap-4 items-end">
                 <div>
                     <label htmlFor="filtroAno" className="block text-sm font-medium text-gray-700">Ano:</label>
@@ -163,6 +165,9 @@ const RoteirosPage = () => {
                         <div key={roteiro.id} className="bg-white rounded-lg shadow-lg overflow-hidden flex flex-col">
                             <div className="p-6 flex-grow">
                                 <h2 className="text-xl font-semibold text-gray-800 mb-2 truncate" title={roteiro.nome}>{roteiro.nome}</h2>
+                                {roteiro.tipo_roteiro && (
+                                    <p className="text-sm font-medium text-indigo-600 mb-1">Tipo: {roteiro.tipo_roteiro}</p>
+                                )}
                                 <p className="text-sm text-gray-600 mb-1">Ano: {roteiro.ano}, Mês: {new Date(0, roteiro.mes-1).toLocaleString('pt-BR', { month: 'long' })}</p>
                                 <p className="text-sm text-gray-600 mb-3">Criado por: {roteiro.criador_nome || 'N/A'}</p>
                                 {roteiro.tags && roteiro.tags.length > 0 && (

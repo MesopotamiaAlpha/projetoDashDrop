@@ -9,8 +9,8 @@ Esta plataforma foi desenvolvida para auxiliar produtoras audiovisuais no gerenc
 
 ## Tecnologias Utilizadas
 
-*   **Backend**: Node.js, Express.js, MySQL2, JWT (JSON Web Tokens), Bcrypt
-*   **Frontend**: React, React Router, Axios, Tailwind CSS, jsPDF
+*   **Backend**: Node.js, Express.js, MySQL2, JWT (JSON Web Tokens), Bcrypt, WeasyPrint (via Python)
+*   **Frontend**: React, React Router, Axios, Tailwind CSS
 *   **Banco de Dados**: MySQL
 *   **Controle de Versão**: Git
 
@@ -22,6 +22,8 @@ Antes de iniciar, certifique-se de ter instalado em seu sistema:
 *   npm (geralmente vem com o Node.js) ou Yarn
 *   MySQL Server (versão 5.7 ou superior recomendada)
 *   Git (para clonar o repositório, se aplicável)
+*   Python (versão 3.x recomendada, para a geração de PDF via WeasyPrint)
+*   WeasyPrint (biblioteca Python, instalável via pip: `pip install WeasyPrint`)
 
 ## Estrutura do Projeto
 
@@ -33,8 +35,8 @@ O projeto está organizado da seguinte forma:
 |   |-- /config      # Configurações (ex: banco de dados)
 |   |-- /controllers # Lógica de controle para as rotas
 |   |-- /middleware  # Middlewares (ex: autenticação)
-|   |-- /models      # (Se usar ORM, não usado neste projeto diretamente nos arquivos)
 |   |-- /routes      # Definições das rotas da API
+|   |-- generate_pdf.py # Script Python para gerar PDF com WeasyPrint
 |   |-- .env         # Variáveis de ambiente (NÃO versionar)
 |   |-- package.json
 |   |-- server.js    # Ponto de entrada do backend
@@ -93,13 +95,18 @@ Siga os passos abaixo para configurar e executar a aplicação localmente.
     ```bash
     cd produtora_audiovisual_platform/backend
     ```
-2.  **Instale as dependências**:
+2.  **Instale as dependências Node.js**:
     ```bash
     npm install
     ```
-3.  **Configure as variáveis de ambiente**: Crie um arquivo `.env` na raiz do diretório `backend` (`produtora_audiovisual_platform/backend/.env`) e adicione as seguintes variáveis, ajustando conforme necessário:
+3.  **Instale as dependências Python (WeasyPrint)**:
+    Certifique-se de ter o Python e o pip instalados. Então, execute:
+    ```bash
+    pip install WeasyPrint
+    ```
+4.  **Configure as variáveis de ambiente**: Crie um arquivo `.env` na raiz do diretório `backend` (`produtora_audiovisual_platform/backend/.env`) e adicione as seguintes variáveis, ajustando conforme necessário:
     ```env
-    DB_HOST=dropvideo.ddns.net
+    DB_HOST=localhost
     DB_USER=seu_usuario_mysql # Ex: root
     DB_PASSWORD=sua_senha_mysql # Ex: password
     DB_NAME=produtora_db
@@ -108,7 +115,7 @@ Siga os passos abaixo para configurar e executar a aplicação localmente.
     ```
     *   Substitua `seu_usuario_mysql` e `sua_senha_mysql` pelas suas credenciais do MySQL.
     *   `JWT_SECRET` é crucial para a segurança da autenticação. Use uma string longa e aleatória.
-4.  **Inicie o servidor backend**:
+5.  **Inicie o servidor backend**:
     ```bash
     npm start
     ```
@@ -116,7 +123,7 @@ Siga os passos abaixo para configurar e executar a aplicação localmente.
     ```bash
     nodemon server.js
     ```
-    O servidor backend estará rodando em `http://dropvideo.ddns.net:3001` (ou na porta definida em `PORT`).
+    O servidor backend estará rodando em `http://localhost:3001` (ou na porta definida em `PORT`).
 
 ### 3. Frontend (React)
 
@@ -129,7 +136,7 @@ Siga os passos abaixo para configurar e executar a aplicação localmente.
     ```bash
     npm install
     ```
-4.  **(Opcional) Variáveis de Ambiente do Frontend**: O frontend tentará se conectar à API em `http://dropvideo.ddns.net:3001/api` por padrão. Se o seu backend estiver rodando em uma URL ou porta diferente, você pode criar um arquivo `.env` na raiz do diretório `frontend` (`produtora_audiovisual_platform/frontend/.env`) e definir:
+4.  **(Opcional) Variáveis de Ambiente do Frontend**: O frontend tentará se conectar à API em `http://localhost:3001/api` por padrão. Se o seu backend estiver rodando em uma URL ou porta diferente, você pode criar um arquivo `.env` na raiz do diretório `frontend` (`produtora_audiovisual_platform/frontend/.env`) e definir:
     ```env
     REACT_APP_API_URL=http://seu_backend_url:porta/api
     ```
@@ -137,47 +144,46 @@ Siga os passos abaixo para configurar e executar a aplicação localmente.
     ```bash
     npm start
     ```
-    A aplicação frontend será aberta automaticamente no seu navegador padrão, geralmente em `http://dropvideo.ddns.net:3000`.
+    A aplicação frontend será aberta automaticamente no seu navegador padrão, geralmente em `http://localhost:3000`.
 
 ## Acessando a Aplicação
 
 Após iniciar o backend e o frontend:
 
-1.  Abra seu navegador e acesse `http://dropvideo.ddns.net:3000` (ou a porta que o React iniciou).
+1.  Abra seu navegador e acesse `http://localhost:3000` (ou a porta que o React iniciou).
 2.  Você será direcionado para a página de login.
-3.  Use as credenciais do usuário administrador padrão (`admin` / `admin123`) ou qualquer outro usuário que você criar através da plataforma (funcionalidade de registro não implementada diretamente na tela de login, usuários são criados via `schema.sql` ou por um administrador no futuro).
+3.  Use as credenciais do usuário administrador padrão (`admin` / `admin123`) ou qualquer outro usuário que você criar através da plataforma.
 
 ## Funcionalidades Principais
 
 *   **Autenticação de Usuários**: Login seguro com JWT.
 *   **Dashboard**: Visão geral e acesso rápido aos módulos.
-*   **Gerenciamento de Usuários (Nova Página)**: Interface para listar, cadastrar, editar (nome completo, email, perfil de apresentador), alterar senha e excluir usuários. Acessível pelo menu de navegação.
-*   **Gerenciamento de Roteiros**: Criação, edição, listagem e organização de espelhos de gravação, com suporte a tags, formatação de cenas e colunas personalizadas.
+*   **Gerenciamento de Usuários**: Interface para listar, cadastrar, editar, alterar senha e excluir usuários.
+*   **Gerenciamento de Roteiros (Espelhos de Gravação)**:
+    *   Criação, edição, listagem e organização de roteiros.
+    *   **Campo "Tipo de Roteiro"**: Adicionado um campo para especificar o tipo de roteiro (ex: PROGRAMA AO VIVO, GRAVADO, PODCAST) na criação/edição e exibido na listagem.
+    *   **Filtro de Ano Estendido**: O filtro de ano na busca de roteiros agora abrange de 2025 até 2035.
+    *   **Página de Edição de Roteiro Aprimorada**:
+        *   **Botão "Adicionar Divisão de Cena"**: Permite adicionar uma linha divisória horizontal para separar cenas, com nome personalizável (inicialmente "NOVA CENA").
+        *   **Botão "Adicionar Nova Linha de Pauta"**: Botão existente renomeado para clareza.
+        *   **Redimensionamento de Colunas**: As colunas da tabela de pautas (Vídeo, Tec/Transição, Áudio, Colunas Personalizadas) podem ser redimensionadas horizontalmente arrastando suas bordas.
+        *   **Coluna "Localização"**: Uma nova coluna "LOCALIZAÇÃO" foi adicionada. Permite inserir texto livre para o local da gravação (pensado para São José dos Campos, SP, mas aceita qualquer texto). **Esta coluna NÃO aparece na impressão ou no PDF gerado.**
+        *   **Botão "Remover Linha/Divisão"**: Movido para uma coluna de "Ações" dedicada ao final de cada linha da pauta ou divisão, para melhor organização.
+        *   **Colunas Personalizadas**: Continua sendo possível adicionar e remover colunas personalizadas dinamicamente para cada linha de pauta.
+        *   **Estilização de Linha**: Opção para escolher cor de fundo da linha.
+    *   **Geração de PDF do Roteiro**: Um botão "Gerar PDF" na página de edição de roteiro permite exportar o roteiro atual para um arquivo PDF. O PDF inclui o logo da empresa (se configurado), nome do roteiro, tipo, data do documento e a tabela de pautas (excluindo a coluna "Localização" e a coluna de "Ações").
+    *   **Impressão Direta do Roteiro**: Um botão "Imprimir" na página de edição de roteiro aciona a funcionalidade de impressão do navegador, formatando a página para uma impressão limpa do roteiro (ocultando elementos de interface e a coluna "Localização").
 *   **Gerenciamento de Tags**: Crie e gerencie tags coloridas para organizar roteiros.
-*   **Calendário de Gravações**: Agendamento de eventos, associação de apresentadores (selecionados da lista de usuários com perfil de apresentador), e filtros.
-*   **Gerenciamento de Equipamentos**: Cadastro e controle de equipamentos da produtora.
-*   **Checklists de Equipamentos**: Criação de checklists personalizados para gravações, selecionando equipamentos do inventário.
-*   **Configurações de Usuário**: Atualização de informações de perfil e alteração de senha. Upload de logo da empresa (a funcionalidade de upload do arquivo em si requer configuração adicional no backend para armazenamento persistente, atualmente salva o caminho).
-*   **Geração de PDF**: Para roteiros e checklists de equipamentos (usando jsPDF no frontend).
-*   **Impressão Direta**: Tentativa de impressão via `window.print()` para roteiros e checklists.
-
-## Animações com PixiJS
-
-A solicitação incluía o uso de PixiJS para animações. No estado atual do projeto, o foco principal foi na implementação das funcionalidades centrais e da estrutura da aplicação. A biblioteca PixiJS foi instalada no frontend (`npm install pixi.js`), mas as animações visuais específicas ainda não foram integradas extensivamente nas páginas.
-
-**Sugestões para futuras implementações com PixiJS:**
-
-*   Animações sutis em transições de página.
-*   Efeitos visuais em interações com elementos da UI (ex: botões, cards).
-*   Elementos gráficos interativos no Dashboard ou em módulos específicos.
-*   Animações de carregamento (loading spinners) mais elaboradas.
-
-O `App.js` e os componentes de página são os locais onde a lógica do PixiJS poderia ser inicializada e gerenciada para criar os efeitos desejados.
+*   **Calendário de Gravações**: Agendamento de eventos e filtros.
+*   **Gerenciamento de Equipamentos**: Cadastro e controle de equipamentos.
+*   **Checklists de Equipamentos**: Criação de checklists personalizados.
+*   **Configurações de Usuário**: Atualização de perfil e senha. Upload de logo da empresa.
 
 ## Notas Adicionais e Solução de Problemas
 
-*   **Tailwind CSS**: Durante a configuração inicial do Tailwind CSS no frontend, houve problemas com o comando `npx tailwindcss init -p`. Os arquivos `tailwind.config.js` e `postcss.config.js` foram criados e configurados manualmente para contornar isso. O Tailwind CSS está funcional.
-*   **Upload de Logo**: A página de configurações permite selecionar um arquivo de logo. No entanto, o backend atual (`userController.js`) espera um `logo_empresa_path` como string. Para um upload de arquivo funcional, o backend precisaria de um endpoint específico para lidar com `multipart/form-data` (ex: usando `multer` em Express) para receber o arquivo, salvá-lo no servidor (ou em um serviço de storage) e então salvar o caminho/URL no banco de dados. A implementação atual é um placeholder para essa funcionalidade.
+*   **Geração de PDF com WeasyPrint**: A geração de PDF para roteiros utiliza a biblioteca WeasyPrint em Python. O backend Node.js chama um script Python (`generate_pdf.py`) que recebe os dados do roteiro, gera um HTML e o converte para PDF. Certifique-se de que Python e WeasyPrint estão instalados e acessíveis no PATH do sistema para que o backend possa executar o script.
+*   **Impressão Direta**: A funcionalidade de impressão direta usa `window.print()` e CSS específico para impressão (`@media print`) para formatar o conteúdo. A qualidade e o layout final podem variar ligeiramente entre navegadores.
+*   **Upload de Logo**: A página de configurações permite selecionar um arquivo de logo. O backend atual (`userController.js`) espera um `logo_empresa_path` como string. Para um upload de arquivo funcional, o backend precisaria de um endpoint específico para lidar com `multipart/form-data` (ex: usando `multer` em Express) para receber o arquivo, salvá-lo no servidor (ou em um serviço de storage) e então salvar o caminho/URL no banco de dados. A implementação atual é um placeholder para essa funcionalidade.
 *   **Segurança**: Lembre-se de usar senhas fortes para o banco de dados e para o `JWT_SECRET` em um ambiente de produção.
 *   **Backup**: Faça backups regulares do seu banco de dados.
 
@@ -190,7 +196,6 @@ Este projeto pode ser expandido com diversas funcionalidades, como:
 *   Funcionalidade de registro de novos usuários diretamente pela interface.
 *   Melhorias na interface do usuário e experiência do usuário (UX).
 *   Testes automatizados mais abrangentes.
-*   Integração completa de animações com PixiJS.
 *   Deployment para um ambiente de produção.
 
 ---

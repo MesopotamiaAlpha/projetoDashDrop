@@ -1,7 +1,5 @@
 -- Scripts SQL para criação do banco de dados da Plataforma de Produtora Audiovisual
 
-create database produtora_db;
-use produtora_db;
 -- Tabela de Usuários
 CREATE TABLE Usuarios (
     id INT AUTO_INCREMENT PRIMARY KEY,
@@ -48,6 +46,8 @@ CREATE TABLE Roteiros (
     mes INT NOT NULL,
     conteudo_principal TEXT, -- Pode ser usado para uma descrição geral ou metadados
     data_criacao_documento DATE,
+    tipo_roteiro VARCHAR(100) NULL, -- Tipo de roteiro (ex: PROGRAMA AO VIVO, GRAVADO, PODCAST)
+    evento_id INT NULL, -- Referência ao evento do calendário
     usuario_id INT, -- Quem criou/possui o roteiro
     criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     atualizado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -56,7 +56,9 @@ CREATE TABLE Roteiros (
     FOREIGN KEY (usuario_id) REFERENCES Usuarios(id) ON DELETE CASCADE,
     FOREIGN KEY (criado_por_id) REFERENCES Usuarios(id) ON DELETE SET NULL,
     FOREIGN KEY (atualizado_por_id) REFERENCES Usuarios(id) ON DELETE SET NULL,
-    INDEX idx_roteiros_ano_mes (ano, mes)
+    FOREIGN KEY (evento_id) REFERENCES EventosCalendario(id) ON DELETE SET NULL,
+    INDEX idx_roteiros_ano_mes (ano, mes),
+    INDEX idx_roteiros_evento_id (evento_id)
 );
 
 -- Tabela de Junção Roteiro-Tags
@@ -78,6 +80,9 @@ CREATE TABLE CenasRoteiro (
     audio TEXT,
     estilo_linha_json TEXT, -- JSON para { cor_fonte: '#RRGGBB', cor_fundo: '#RRGGBB', altura_personalizada: '100px' }
     colunas_personalizadas_json TEXT, -- JSON para { "Nome Coluna 1": "Conteúdo 1", "Nome Coluna 2": "Conteúdo 2" }
+    localizacao VARCHAR(255) NULL, -- Localização da gravação (não aparece na impressão/PDF)
+    tipo_linha VARCHAR(50) DEFAULT 'pauta', -- Tipo de linha: 'pauta' ou 'divisoria'
+    nome_divisao VARCHAR(255) NULL, -- Nome da divisão (usado quando tipo_linha = 'divisoria')
     criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     atualizado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     criado_por_id INT,
@@ -85,6 +90,15 @@ CREATE TABLE CenasRoteiro (
     FOREIGN KEY (roteiro_id) REFERENCES Roteiros(id) ON DELETE CASCADE,
     FOREIGN KEY (criado_por_id) REFERENCES Usuarios(id) ON DELETE SET NULL,
     FOREIGN KEY (atualizado_por_id) REFERENCES Usuarios(id) ON DELETE SET NULL
+);
+
+-- Tabela de Junção Cena-Tags
+CREATE TABLE CenaTags (
+    cena_id INT NOT NULL,
+    tag_id INT NOT NULL,
+    PRIMARY KEY (cena_id, tag_id),
+    FOREIGN KEY (cena_id) REFERENCES CenasRoteiro(id) ON DELETE CASCADE,
+    FOREIGN KEY (tag_id) REFERENCES Tags(id) ON DELETE CASCADE
 );
 
 -- Tabela de Eventos do Calendário
@@ -162,12 +176,6 @@ CREATE TABLE ChecklistItens (
 -- Adicionar usuário admin inicial (exemplo, a senha deve ser hash na aplicação)
 -- INSERT INTO Usuarios (nome_usuario, senha_hash, nome_completo, email, perfil_apresentador) VALUES ('admin', 'hash_da_senha_admin', 'Administrador do Sistema', 'admin@produtora.com', FALSE);
 
---Adicionar o usuario admin para iniciar o banco, acima é um exemplo
---INSERT INTO Usuarios (nome_usuario, senha_hash, nome_completo, email, perfil_apresentador) VALUES ('admin', '$2b$10$KuOhTWlold.orby5eGP6ieR0vxmyzYiQtlosTqlfX88sAdls3SFfW', 'Administrador do Sistema', 'admin@produtora.com', FALSE);
-
--- Adicionar campos de auditoria às tabelas que ainda não os possuem de forma explícita para criado_por/atualizado_por
--- (Já incluído na maioria das tabelas acima)
-
 -- Considerações:
 -- 1. Auditoria: A tabela LogsAuditoria é genérica. Triggers no banco ou lógica na API podem populá-la.
 --    Alternativamente, as colunas criado_por_id e atualizado_por_id nas próprias tabelas já oferecem um nível de auditoria.
@@ -177,5 +185,3 @@ CREATE TABLE ChecklistItens (
 --    Para este escopo, assumi que pode ser por usuário ou um usuário específico (ex: o primeiro usuário criado, ou um com flag 'admin').
 --    A lógica de qual logo usar no roteiro (se do criador do roteiro, ou um global) será definida na aplicação.
 --    Para simplificar, o roteiro usará o logo do usuário que o criou, se este tiver um logo configurado.
-
-

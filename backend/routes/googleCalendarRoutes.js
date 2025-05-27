@@ -1,35 +1,20 @@
 const express = require("express");
 const router = express.Router();
-const googleCalendarController = require("../controllers/googleCalendarController");
-console.log("[DEBUG] Imported into googleCalendarRoutes.js (controller):");
-console.dir(googleCalendarController, { depth: null });
+const calendarioController = require("../controllers/calendarioController");
+const roteiroController = require("../controllers/roteiroController");
+const { authenticateToken } = require("../middleware/authMiddleware");
 
-const authMiddleware = require("../middleware/authMiddleware");
-console.log("[DEBUG] Imported into googleCalendarRoutes.js (authMiddleware):");
-console.dir(authMiddleware, { depth: null });
+// Aplicar middleware de autenticação a todas as rotas
+router.use(authenticateToken);
 
-// @route   GET /api/google-calendar/events
-// @desc    Get events from Google Calendar
-// @access  Private
-if (googleCalendarController && typeof googleCalendarController.getGoogleCalendarEvents === 'function') {
-    console.log("[DEBUG] googleCalendarController.getGoogleCalendarEvents is a function. Type:", typeof googleCalendarController.getGoogleCalendarEvents);
-    if (authMiddleware && typeof authMiddleware.protect === 'function'){
-        console.log("[DEBUG] authMiddleware.protect is a function. Type:", typeof authMiddleware.protect);
-        // Usando o middleware protect
-        // router.get("/events", authMiddleware.protect, googleCalendarController.getGoogleCalendarEvents);
-        
-        // TESTE: Comentando o middleware protect temporariamente
-        console.log("[DEBUG] Temporarily running /events route WITHOUT 'protect' middleware for testing.");
-        router.get("/events", googleCalendarController.getGoogleCalendarEvents);
-    } else {
-        console.error("[DEBUG] ERROR: authMiddleware.protect is NOT a function or authMiddleware is undefined. Type:", typeof authMiddleware?.protect);
-        // Fallback para rodar sem protect se ele estiver com problema, para isolar o erro
-        console.log("[DEBUG] Fallback: Running /events route WITHOUT 'protect' middleware due to an issue with it.");
-        router.get("/events", googleCalendarController.getGoogleCalendarEvents);
-    }
-} else {
-    console.error("[DEBUG] ERROR: getGoogleCalendarEvents is NOT a function or googleCalendarController is undefined. Type:", typeof googleCalendarController?.getGoogleCalendarEvents);
-}
+// Rotas para Eventos do Calendário
+router.post("/eventos", calendarioController.createEvento);
+router.get("/eventos", calendarioController.getAllEventos);
+router.get("/eventos/:id", calendarioController.getEventoById);
+router.put("/eventos/:id", calendarioController.updateEvento);
+router.delete("/eventos/:id", calendarioController.deleteEvento);
+
+// Rota para obter roteiros vinculados a um evento
+router.get("/eventos/:eventoId/roteiros", roteiroController.getRoteirosForEvento);
 
 module.exports = router;
-
