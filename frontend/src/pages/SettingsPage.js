@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
 import { useAuth } from '../contexts/AuthContext';
+import { useTheme } from '../contexts/ThemeContext';
+import '../styles/theme.css';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001/api';
 
@@ -16,6 +18,10 @@ const SettingsPage = () => {
     const [perfilApresentador, setPerfilApresentador] = useState(currentUser?.perfil_apresentador || false);
     const [logoEmpresaPath, setLogoEmpresaPath] = useState(currentUser?.logo_empresa_path || '');
     const [logoFile, setLogoFile] = useState(null);
+    const [modoNoturno, setModoNoturno] = useState(currentUser?.modo_noturno || false);
+    
+    // Acesso ao contexto de tema
+    const { darkMode, setTheme } = useTheme();
 
     // Password change fields
     const [senhaAntiga, setSenhaAntiga] = useState('');
@@ -28,8 +34,14 @@ const SettingsPage = () => {
             setEmail(currentUser.email || '');
             setPerfilApresentador(currentUser.perfil_apresentador || false);
             setLogoEmpresaPath(currentUser.logo_empresa_path || '');
+            setModoNoturno(currentUser.modo_noturno || false);
+            
+            // Sincronizar o tema com a preferência do usuário
+            if (currentUser.modo_noturno !== undefined) {
+                setTheme(currentUser.modo_noturno);
+            }
         }
-    }, [currentUser]);
+    }, [currentUser, setTheme]);
 
     const handleProfileUpdate = async (e) => {
         e.preventDefault();
@@ -41,45 +53,39 @@ const SettingsPage = () => {
             nome_completo: nomeCompleto,
             email,
             perfil_apresentador: perfilApresentador,
-            // logo_empresa_path will be handled if a new logo is uploaded
+            modo_noturno: modoNoturno
+            // logo_empresa_path será tratado separadamente se um novo logo for enviado
         };
         
-        // This is a simplified logo upload. In a real app, you'd use FormData for file uploads.
-        // The backend needs to be set up to handle file uploads (e.g., using multer in Node.js/Express).
-        // For this example, let's assume the backend /users/me/profile can accept a logo_empresa_path directly (e.g., after uploading it elsewhere and getting a URL)
-        // OR, we make a separate call to an upload endpoint.
-        // The current backend userController.updateCurrentUserProfile expects logo_empresa_path as a string.
-        // So, if a file is selected, it should be uploaded first, then its path/URL sent.
-        // This part is complex and depends heavily on backend setup.
-        // For now, if logoFile is set, we'll just indicate it needs to be uploaded.
-        // A more robust solution would be to upload to a dedicated endpoint and then save the path.
-
+        // Upload do logo se um novo arquivo for selecionado
         if (logoFile) {
-            // Placeholder: Actual file upload logic is needed here.
-            // 1. Create FormData
-            // 2. POST to an upload endpoint (e.g., /api/upload/logo)
-            // 3. Get the returned path/URL and set it to profileData.logo_empresa_path
-            alert("A funcionalidade de upload de logo precisa ser implementada com um endpoint dedicado no backend. Por enquanto, este campo não será atualizado com um novo arquivo.");
-            // For demonstration, if you had an upload endpoint that returns a path:
-            // const formData = new FormData();
-            // formData.append('logo', logoFile);
-            // try {
-            //     const uploadResponse = await axios.post(`${API_URL}/upload/logo`, formData, {
-            //         headers: { 
-            //             'Content-Type': 'multipart/form-data',
-            //             Authorization: `Bearer ${localStorage.getItem('authToken')}` 
-            //         }
-            //     });
-            //     profileData.logo_empresa_path = uploadResponse.data.filePath; // Or whatever the backend returns
-            // } catch (uploadError) {
-            //     setError('Falha ao fazer upload do logo.');
-            //     setLoading(false);
-            //     return;
-            // }
+            try {
+                const formData = new FormData();
+                formData.append('logo', logoFile);
+                
+                const uploadResponse = await axios.post(`${API_URL}/uploads/logo`, formData, {
+                    headers: { 
+                        'Content-Type': 'multipart/form-data',
+                        Authorization: `Bearer ${localStorage.getItem('authToken')}` 
+                    }
+                });
+                
+                // Atualizar o caminho do logo nos dados do perfil
+                profileData.logo_empresa_path = uploadResponse.data.filePath;
+            } catch (uploadError) {
+                console.error("Erro ao fazer upload do logo:", uploadError);
+                setError('Falha ao fazer upload do logo. ' + (uploadError.response?.data?.message || ''));
+                setLoading(false);
+                return;
+            }
         } else {
-            // If no new file, but path exists and user might have cleared it (not handled here)
-            // or just keep the existing path
+            // Se não houver novo arquivo, manter o caminho existente
             profileData.logo_empresa_path = logoEmpresaPath;
+        }
+        
+        // Atualizar o tema no contexto quando o modo noturno mudar
+        if (modoNoturno !== darkMode) {
+            setTheme(modoNoturno);
         }
 
         try {
@@ -178,10 +184,23 @@ const SettingsPage = () => {
                     </label>
                 </div>
                 <div className="mt-4">
-                    <label htmlFor="logoEmpresa" className="block text-sm font-medium text-gray-700">Logo da Empresa (PNG):</label>
+                    <label htmlFor="logoEmpresa" className="block text-sm font-medium text-gray-700">Logo da Empresa:</label>
                     {logoEmpresaPath && <img src={logoEmpresaPath} alt="Logo Atual" className="max-h-20 my-2 border p-1"/>}
-                    <input type="file" id="logoEmpresa" accept=".png" onChange={(e) => setLogoFile(e.target.files[0])} className="mt-1 block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100"/>
-                    <p className="text-xs text-gray-500 mt-1">Selecione um novo arquivo PNG para alterar o logo. O upload real do arquivo precisa ser implementado no backend.</p>
+                    <input type="file" id="logoEmpresa" accept="image/*" onChange={(e) => setLogoFile(e.target.files[0])} className="mt-1 block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100"/>
+                    <p className="text-xs text-gray-500 mt-1">Selecione um arquivo de imagem para o logo da empresa. Este logo aparecerá no cabeçalho e na página de login.</p>
+                </div>
+                <div className="mt-4">
+                    <label htmlFor="modoNoturno" className="block text-sm font-medium text-gray-700 mb-2">Modo Noturno:</label>
+                    <label className="theme-switch">
+                        <input 
+                            type="checkbox" 
+                            id="modoNoturno" 
+                            checked={modoNoturno} 
+                            onChange={(e) => setModoNoturno(e.target.checked)} 
+                        />
+                        <span className="slider"></span>
+                    </label>
+                    <p className="text-xs text-gray-500 mt-1">Ative o modo noturno para uma experiência visual mais confortável em ambientes com pouca luz.</p>
                 </div>
                 <div className="mt-6 flex justify-end">
                     <button type="submit" disabled={loading} className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded disabled:bg-blue-300">

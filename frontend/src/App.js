@@ -12,6 +12,8 @@ import UserManagementPage from './pages/UserManagementPage';
 import NotFoundPage from './pages/NotFoundPage';
 import PrivateRoute from './components/PrivateRoute'; // Corrigido para o caminho dentro de src
 import AuthProvider, { useAuth } from './contexts/AuthContext'; // Corrigido para o caminho dentro de src
+import { ThemeProvider } from './contexts/ThemeContext'; // Importando o ThemeProvider
+import './styles/theme.css'; // Importando os estilos do tema
 
 const MainLayout = ({ children }) => {
     const { logout, user } = useAuth();
@@ -49,17 +51,18 @@ const MainLayout = ({ children }) => {
 function App() {
   return (
     <AuthProvider>
-      <Router>
-        <Routes>
-          <Route path="/login" element={<LoginPage />} />
-          <Route 
-            path="/" 
-            element={
-              <PrivateRoute>
-                <MainLayout><DashboardPage /></MainLayout>
-              </PrivateRoute>
-            }
-          />
+      <ThemeProvider>
+        <Router>
+          <Routes>
+            <Route path="/login" element={<LoginPage />} />
+            <Route 
+              path="/" 
+              element={
+                <PrivateRoute>
+                  <MainLayout><DashboardPage /></MainLayout>
+                </PrivateRoute>
+              }
+            />
           <Route 
             path="/roteiros" 
             element={
@@ -142,7 +145,8 @@ function App() {
           />
           <Route path="*" element={<MainLayout><NotFoundPage /></MainLayout>} />
         </Routes>
-      </Router>
+        </Router>
+      </ThemeProvider>
     </AuthProvider>
   );
 }

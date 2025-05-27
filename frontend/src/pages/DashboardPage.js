@@ -1,15 +1,22 @@
 import React, { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import axios from 'axios';
+import Calendar from 'react-calendar';
+import 'react-calendar/dist/Calendar.css';
+import './DashboardPage.css';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001/api';
 
 const DashboardPage = () => {
     const { currentUser } = useAuth();
+    const navigate = useNavigate();
     const [proximosEventos, setProximosEventos] = useState([]);
     const [loadingEventos, setLoadingEventos] = useState(true);
     const [errorEventos, setErrorEventos] = useState('');
+    const [eventosDoMes, setEventosDoMes] = useState([]);
+    const [dataCalendario, setDataCalendario] = useState(new Date());
+    const [eventoHover, setEventoHover] = useState(null);
 
     useEffect(() => {
         const fetchProximosEventos = async () => {
@@ -33,6 +40,7 @@ const DashboardPage = () => {
                     .sort((a, b) => new Date(a.data_evento) - new Date(b.data_evento));
 
                 setProximosEventos(eventosFiltrados.slice(0, 5)); // Show next 5 events
+                setEventosDoMes(response.data); // Todos os eventos do mês para o mini calendário
             } catch (err) {
                 console.error("Erro ao buscar próximos eventos:", err);
                 setErrorEventos('Não foi possível carregar os próximos eventos.');
@@ -41,7 +49,7 @@ const DashboardPage = () => {
         };
 
         fetchProximosEventos();
-    }, [currentUser]);
+    }, [currentUser, dataCalendario]);
 
     const calcularDiasRestantes = (dataEvento) => {
         const hoje = new Date();
@@ -56,12 +64,145 @@ const DashboardPage = () => {
         if (diffDays === 1) return 'Amanhã';
         return `Faltam ${diffDays} dias`;
     };
+    
+    // Função para verificar se uma data tem eventos
+    const temEventoNaData = (date) => {
+        if (!eventosDoMes || eventosDoMes.length === 0) return false;
+        
+        return eventosDoMes.some(evento => {
+            if (!evento.data_evento) return false;
+            
+            // Converter a string de data para objeto Date
+            const dataEvento = new Date(evento.data_evento);
+            
+            // Comparar apenas ano, mês e dia
+            return (
+                date.getDate() === dataEvento.getUTCDate() &&
+                date.getMonth() === dataEvento.getUTCMonth() &&
+                date.getFullYear() === dataEvento.getUTCFullYear()
+            );
+        });
+    };
+    
+    // Função para obter eventos de uma data específica
+    const getEventosDaData = (date) => {
+        if (!eventosDoMes || eventosDoMes.length === 0) return [];
+        
+        return eventosDoMes.filter(evento => {
+            if (!evento.data_evento) return false;
+            
+            // Converter a string de data para objeto Date
+            const dataEvento = new Date(evento.data_evento);
+            
+            // Comparar apenas ano, mês e dia
+            return (
+                date.getDate() === dataEvento.getUTCDate() &&
+                date.getMonth() === dataEvento.getUTCMonth() &&
+                date.getFullYear() === dataEvento.getUTCFullYear()
+            );
+        });
+    };
+    
+    // Função para personalizar a aparência das datas no calendário
+    const tileClassName = ({ date, view }) => {
+        if (view === 'month') {
+            // Verificar se a data tem eventos
+            const hasEvent = temEventoNaData(date);
+            
+            // Para debug
+            if (hasEvent) {
+                console.log('Data com evento:', date.toISOString().split('T')[0]);
+            }
+            
+            return hasEvent ? 'has-event' : null;
+        }
+        return null;
+    };
+    
+    // Função para lidar com o clique em uma data do calendário
+    const handleDateClick = (value) => {
+        const eventos = getEventosDaData(value);
+        if (eventos.length > 0) {
+            // Redirecionar para a página de calendário com o ID do evento
+            navigate(`/calendario?data=${value.toISOString().split('T')[0]}&evento=${eventos[0].id}`);
+        }
+    };
+    
+    // Função para mostrar tooltip ao passar o mouse sobre uma data
+    const handleDateMouseOver = (value) => {
+        const eventos = getEventosDaData(value);
+        if (eventos.length > 0) {
+            setEventoHover({
+                data: value,
+                eventos: eventos
+            });
+        } else {
+            setEventoHover(null);
+        }
+    };
+    
+    // Função para esconder tooltip ao tirar o mouse de uma data
+    const handleDateMouseOut = () => {
+        setEventoHover(null);
+    };
 
     return (
         <div className="container mx-auto p-4">
             <h1 className="text-3xl font-bold text-gray-800 mb-6">Bem-vindo(a), {currentUser?.nome_completo || currentUser?.nome_usuario}!</h1>
             
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
+                {/* Mini Calendário */}
+                <div className="bg-white p-6 rounded-lg shadow-lg">
+                    <h2 className="text-xl font-semibold text-gray-700 mb-4">Calendário de Gravações</h2>
+                    <div className="calendar-container relative">
+                        <Calendar 
+                            onChange={setDataCalendario}
+                            value={dataCalendario}
+                            tileClassName={tileClassName}
+                            onClickDay={handleDateClick}
+                            onMouseOver={({ target, view }) => {
+                                if (view === 'month' && target.tagName === 'ABBR') {
+                                    const date = new Date(target.getAttribute('aria-label'));
+                                    handleDateMouseOver(date);
+                                }
+                            }}
+                            onMouseOut={handleDateMouseOut}
+                            locale="pt-BR"
+                            formatDay={(locale, date) => date.getDate()}
+                            formatMonthYear={(locale, date) => {
+                                const months = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
+                                return `${months[date.getMonth()]} ${date.getFullYear()}`;
+                            }}
+                            formatShortWeekday={(locale, date) => {
+                                const days = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+                                return days[date.getDay()];
+                            }}
+                        />
+                        
+                        {/* Tooltip para mostrar detalhes do evento ao passar o mouse */}
+                        {eventoHover && (
+                            <div className="event-tooltip">
+                                <h3>
+                                    {eventoHover.data.toLocaleDateString('pt-BR')}
+                                </h3>
+                                <ul>
+                                    {eventoHover.eventos.map(evento => (
+                                        <li key={evento.id}>
+                                            <span className="font-medium">{evento.nome_gravacao}</span>
+                                            <span className="text-gray-600"> - {evento.horario_inicio.substring(0,5)}</span>
+                                        </li>
+                                    ))}
+                                </ul>
+                                <p>Clique para ver detalhes</p>
+                            </div>
+                        )}
+                    </div>
+                    <div className="calendar-legend">
+                        <span className="legend-dot"></span>
+                        Dias com gravações agendadas
+                    </div>
+                </div>
+            
                 {/* Card de Próximos Eventos */}
                 <div className="bg-white p-6 rounded-lg shadow-lg">
                     <h2 className="text-xl font-semibold text-gray-700 mb-4">Próximos Eventos no seu Calendário</h2>
@@ -124,4 +265,3 @@ const DashboardPage = () => {
 };
 
 export default DashboardPage;
-

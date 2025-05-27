@@ -3,14 +3,16 @@ const express = require("express");
 const cors = require("cors");
 const { pool, testConnection } = require("./config/db");
 
-// Import routes
-const authRoutes = require("./routes/authRoutes");
-const userRoutes = require("./routes/userRoutes");
-const roteiroRoutes = require("./routes/roteiroRoutes");
-const tagRoutes = require("./routes/tagRoutes");
-const calendarioRoutes = require("./routes/calendarioRoutes");
-const equipamentoRoutes = require("./routes/equipamentoRoutes");
+// Importar rotas
+const authRoutes = require('./routes/authRoutes');
+const roteiroRoutes = require('./routes/roteiroRoutes');
+const tagRoutes = require('./routes/tagRoutes');
+const calendarioRoutes = require('./routes/calendarioRoutes');
+const userRoutes = require('./routes/userRoutes');
+const uploadRoutes = require('./routes/uploadRoutes');
 const checklistRoutes = require("./routes/checklistRoutes");
+const publicRoutes = require('./routes/publicRoutes');
+const equipamentosRoutes = require('./routes/equipamentosRoutes');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -28,14 +30,16 @@ app.get("/", (req, res) => {
     res.json({ message: "Welcome to Produtora Audiovisual Platform API" });
 });
 
-// API Routes
-app.use("/api/auth", authRoutes);
-app.use("/api/users", userRoutes);
-app.use("/api/roteiros", roteiroRoutes);
-app.use("/api/tags", tagRoutes);
-app.use("/api/calendario", calendarioRoutes);
-app.use("/api/equipamentos", equipamentoRoutes);
-app.use("/api/checklists", checklistRoutes);
+// Configurar rotas
+app.use('/api/auth', authRoutes);
+app.use('/api/roteiros', roteiroRoutes);
+app.use('/api/tags', tagRoutes);
+app.use('/api/calendario', calendarioRoutes);
+app.use('/api/users', userRoutes);
+app.use('/api/uploads', uploadRoutes);
+app.use('/api/checklists', checklistRoutes);
+app.use('/api/public', publicRoutes);
+app.use('/api/equipamentos', equipamentosRoutes);
 
 // Global Error Handler (simple version)
 app.use((err, req, res, next) => {
