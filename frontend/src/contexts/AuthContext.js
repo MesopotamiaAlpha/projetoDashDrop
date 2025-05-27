@@ -10,9 +10,9 @@ export const useAuth = () => useContext(AuthContext);
 const AuthProvider = ({ children }) => {
     const [currentUser, setCurrentUser] = useState(null);
     const [loading, setLoading] = useState(true);
+    const [token, setToken] = useState(localStorage.getItem('authToken') || null);
 
     useEffect(() => {
-        const token = localStorage.getItem('authToken');
         if (token) {
             axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
             // Fetch user profile to validate token and get user info
@@ -23,20 +23,22 @@ const AuthProvider = ({ children }) => {
                 .catch(error => {
                     console.error("Failed to fetch user with token:", error);
                     localStorage.removeItem('authToken');
+                    setToken(null);
                     delete axios.defaults.headers.common['Authorization'];
                 })
                 .finally(() => setLoading(false));
         } else {
             setLoading(false);
         }
-    }, []);
+    }, [token]);
 
     const login = async (nome_usuario, senha) => {
         try {
             const response = await axios.post(`${API_URL}/auth/login`, { nome_usuario, senha });
-            const { token, user } = response.data;
-            localStorage.setItem('authToken', token);
-            axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+            const { token: newToken, user } = response.data;
+            localStorage.setItem('authToken', newToken);
+            setToken(newToken);
+            axios.defaults.headers.common['Authorization'] = `Bearer ${newToken}`;
             setCurrentUser(user);
             return user;
         } catch (error) {
@@ -58,6 +60,7 @@ const AuthProvider = ({ children }) => {
 
     const logout = () => {
         localStorage.removeItem('authToken');
+        setToken(null);
         delete axios.defaults.headers.common['Authorization'];
         setCurrentUser(null);
         // Consider redirecting to login page here or in the component that calls logout
@@ -65,6 +68,7 @@ const AuthProvider = ({ children }) => {
 
     const value = {
         currentUser,
+        token,
         login,
         register,
         logout,

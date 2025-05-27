@@ -10,7 +10,11 @@ CREATE TABLE Usuarios (
     perfil_apresentador BOOLEAN DEFAULT FALSE,
     logo_empresa_path VARCHAR(255) NULL, -- Caminho para o logo da empresa, se este usuário for o "admin" ou tiver essa config
     criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    atualizado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    atualizado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    criado_por_id INT,
+    atualizado_por_id INT,
+    FOREIGN KEY (criado_por_id) REFERENCES Usuarios(id) ON DELETE SET NULL,
+    FOREIGN KEY (atualizado_por_id) REFERENCES Usuarios(id) ON DELETE SET NULL
 );
 
 -- Tabela de Logs de Auditoria
