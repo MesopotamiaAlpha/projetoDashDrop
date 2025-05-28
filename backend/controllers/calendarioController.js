@@ -1,14 +1,43 @@
 const { pool } = require("../config/db");
 const { logAudit } = require("./authController"); // Re-using logAudit
 
+// Função para gerar uma cor aleatória em formato hexadecimal
+const gerarCorAleatoria = () => {
+    const cores = [
+        "#4285F4", // Azul
+        "#EA4335", // Vermelho
+        "#FBBC05", // Amarelo
+        "#34A853", // Verde
+        "#8E24AA", // Roxo
+        "#16A2D7", // Azul claro
+        "#FF6D00", // Laranja
+        "#2E7D32", // Verde escuro
+        "#6200EA", // Índigo
+        "#C2185B", // Rosa escuro
+        "#00ACC1", // Ciano
+        "#F4511E", // Laranja escuro
+        "#43A047", // Verde médio
+        "#6D4C41", // Marrom
+        "#AB47BC", // Roxo médio
+        "#EC407A", // Rosa
+        "#7CB342", // Verde limão
+        "#5C6BC0"  // Azul índigo
+    ];
+    
+    return cores[Math.floor(Math.random() * cores.length)];
+};
+
 // Create a new calendar event
 const createEvento = async (req, res) => {
-    const { nome_gravacao, data_evento, horario_inicio, horario_fim, tema, apresentador_ids } = req.body; // apresentador_ids is an array of user IDs
+    const { nome_gravacao, data_evento, horario_inicio, horario_fim, tema, apresentador_ids, cor } = req.body; // apresentador_ids is an array of user IDs
     const userId = req.user.userId;
 
     if (!nome_gravacao || !data_evento || !horario_inicio) {
         return res.status(400).json({ message: "Nome da gravação, data e horário de início são obrigatórios." });
     }
+
+    // Se a cor não for fornecida, gera uma cor aleatória
+    const eventColor = cor || gerarCorAleatoria();
 
     let connection;
     try {
@@ -16,8 +45,8 @@ const createEvento = async (req, res) => {
         await connection.beginTransaction();
 
         const [result] = await connection.query(
-            "INSERT INTO EventosCalendario (nome_gravacao, data_evento, horario_inicio, horario_fim, tema, usuario_id, criado_por_id, atualizado_por_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-            [nome_gravacao, data_evento, horario_inicio, horario_fim, tema, userId, userId, userId]
+            "INSERT INTO EventosCalendario (nome_gravacao, data_evento, horario_inicio, horario_fim, tema, usuario_id, criado_por_id, atualizado_por_id, cor) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            [nome_gravacao, data_evento, horario_inicio, horario_fim, tema, userId, userId, userId, eventColor]
         );
         const newEventoId = result.insertId;
 
@@ -51,7 +80,7 @@ const getAllEventos = async (req, res) => {
     const { mes, ano, apresentadorId, tema } = req.query;
     
     let query = `
-        SELECT DISTINCT e.id, e.nome_gravacao, e.data_evento, e.horario_inicio, e.horario_fim, e.tema, 
+        SELECT DISTINCT e.id, e.nome_gravacao, e.data_evento, e.horario_inicio, e.horario_fim, e.tema, e.cor,
                uc.nome_usuario as criador_evento_nome,
                GROUP_CONCAT(DISTINCT ua.id SEPARATOR ",") as apresentador_ids,
                GROUP_CONCAT(DISTINCT ua.nome_completo SEPARATOR ";") as apresentador_nomes
@@ -148,7 +177,7 @@ const getEventoById = async (req, res) => {
 // Update a calendar event by ID
 const updateEvento = async (req, res) => {
     const { id } = req.params;
-    const { nome_gravacao, data_evento, horario_inicio, horario_fim, tema, apresentador_ids } = req.body;
+    const { nome_gravacao, data_evento, horario_inicio, horario_fim, tema, apresentador_ids, cor } = req.body;
     const userId = req.user.userId;
 
     let connection;
@@ -162,6 +191,7 @@ const updateEvento = async (req, res) => {
         if (horario_inicio !== undefined) fieldsToUpdate.horario_inicio = horario_inicio;
         if (horario_fim !== undefined) fieldsToUpdate.horario_fim = horario_fim; // Allow setting to null
         if (tema !== undefined) fieldsToUpdate.tema = tema;
+        if (cor !== undefined) fieldsToUpdate.cor = cor;
         fieldsToUpdate.atualizado_por_id = userId;
 
         if (Object.keys(fieldsToUpdate).length > 1) { // Check if there are fields other than atualizado_por_id
